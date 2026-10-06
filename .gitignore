@@ -1,0 +1,25 @@
+# Secrets - never commit
+.env
+.env.*
+!.env.example
+
+# Virtual environment & caches (all live on E:)
+.venv/
+.pip-cache/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Storage directories (spec: no raw datasets/models/artifacts in VCS or Mongo)
+data/
+datasets/
+models/
+artifacts/
+logs/
+reports/
+temp/
+
+# Node (if frontend added later)
+node_modules/
+dist/
