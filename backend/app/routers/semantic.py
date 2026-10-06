@@ -49,7 +49,9 @@ def _map_service_errors(exc: Exception) -> HTTPException:
         return HTTPException(status_code=422, detail=str(exc))
     if isinstance(exc, MetadataUnavailable):
         return HTTPException(status_code=503, detail=str(exc))
-    return HTTPException(status_code=500, detail=f"Unexpected error: {type(exc).__name__}")
+    import traceback
+    logger.error("Semantic API error: %s\n%s", exc, traceback.format_exc())
+    return HTTPException(status_code=500, detail=f"Unexpected error: {type(exc).__name__}: {exc}")
 
 
 async def _dataset_or_404(dataset_id: str) -> Dict[str, Any]:

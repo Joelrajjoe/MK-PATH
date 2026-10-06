@@ -24,7 +24,9 @@ CORE_COLLECTIONS: List[str] = [
     "datasets",
     "ontology",
     "agent_runs",
+    "runs",
     "clarification_questions",
+    "human_decisions",
     "validation_results",
     "models",
     "artifacts",
@@ -76,6 +78,14 @@ class DatabaseManager:
             return False
 
         try:
+            import asyncio
+            try:
+                curr_loop = asyncio.get_running_loop()
+                if self._client is not None and getattr(self._client, "_loop", None) is not None and self._client._loop != curr_loop:
+                    self._client = None
+            except Exception:
+                pass
+
             if self._client is None:
                 self._client = AsyncMongoClient(
                     settings.MONGODB_URI,
@@ -91,6 +101,11 @@ class DatabaseManager:
             self._connected = True
             self._last_error = None
             return True
+        except RuntimeError as exc:
+            self._client = None
+            self._connected = False
+            self._last_error = "RuntimeError"
+            return False
         except PyMongoError as exc:
             # Log/record the exception type only; never the URI or credentials.
             self._connected = False

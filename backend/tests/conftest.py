@@ -5,7 +5,7 @@ no mocked database responses). Every document created by a test is deleted
 during teardown so the shared database stays clean.
 """
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from app.config import settings
 from app.main import app
 
-SESSION_START = datetime.now(timezone.utc)
+SESSION_START = datetime.now(timezone.utc) - timedelta(minutes=60)
 
 
 @pytest.fixture(scope="session")

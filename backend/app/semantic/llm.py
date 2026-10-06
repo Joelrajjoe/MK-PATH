@@ -156,15 +156,144 @@ class GeminiProvider:
         return out
 
 
+class GroqProvider:
+    """Groq REST provider (structured JSON output via OpenAI-compatible endpoint)."""
+
+    name = "groq"
+
+    def __init__(self, api_key: str, model: Optional[str] = None, timeout: float = 8.0):
+        self._api_key = api_key
+        self._model = model or getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile")
+        self._timeout = timeout
+
+    def _generate(self, prompt: str) -> Optional[Dict[str, Any]]:
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": self._model,
+            "messages": [
+                {"role": "system", "content": "You are an expert data analyst AI assistant. Return valid JSON output only."},
+                {"role": "user", "content": prompt}
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": 0.2
+        }
+        try:
+            resp = httpx.post(url, headers=headers, json=payload, timeout=self._timeout)
+            resp.raise_for_status()
+            data = resp.json()
+            text = data["choices"][0]["message"]["content"]
+            return json.loads(text)
+        except Exception as exc:
+            logger.warning("Groq call failed: %s", type(exc).__name__)
+            return None
+
+    def propose_column_interpretations(
+        self,
+        *,
+        column: str,
+        dtype: str,
+        values: List[str],
+        business_goal: Optional[str],
+    ) -> Optional[List[Dict[str, Any]]]:
+        goal = business_goal or "(not provided)"
+        prompt = (
+            "You are assisting a data analyst. A dataset column carries coded "
+            "business meaning that humans must confirm. Propose the most plausible "
+            "business interpretations of the VALUES of this column.\n"
+            f"Business goal: {goal}\n"
+            f"Column name: {column}\nColumn type: {dtype}\n"
+            f"Observed values (sample): {values}\n\n"
+            'Respond as JSON: {"proposals": [{"label": "short label", "description": "detail", '
+            '"confidence": 0.8}]} with at most 5 proposals. '
+            "Labels must be short."
+        )
+        data = self._generate(prompt)
+        if not data or "proposals" not in data or not isinstance(data["proposals"], list):
+            return None
+        out: List[Dict[str, Any]] = []
+        for p in data["proposals"][:5]:
+            if not isinstance(p, dict) or "label" not in p:
+                continue
+            try:
+                conf = float(p.get("confidence", 0.5))
+            except (TypeError, ValueError):
+                conf = 0.5
+            out.append(
+                {
+                    "label": str(p["label"])[:80],
+                    "description": str(p.get("description", ""))[:300],
+                    "confidence": max(0.0, min(1.0, conf)),
+                    "source": "llm_proposed",
+                }
+            )
+        return out or None
+
+    def propose_ambiguities(self, *, context_summary: Dict[str, Any]) -> List[Dict[str, Any]]:
+        prompt = (
+            "Review this dataset semantics summary and list any business-meaning "
+            "ambiguities that would block reliable analysis and are NOT already "
+            "listed. Respond as JSON: {\"ambiguities\": [{\"subject\": \"subject\", "
+            "\"question\": \"question\"}]} with at most 3 items. Return an empty list if none."
+            f"\nSummary: {json.dumps(context_summary)[:4000]}"
+        )
+        data = self._generate(prompt)
+        if not data or not isinstance(data.get("ambiguities"), list):
+            return []
+        out: List[Dict[str, Any]] = []
+        for a in data["ambiguities"][:3]:
+            if isinstance(a, dict) and a.get("question"):
+                out.append(
+                    {
+                        "subject": str(a.get("subject", "dataset"))[:80],
+                        "question": str(a["question"])[:300],
+                    }
+                )
+        return out
+
+
+class MultiProvider:
+    """Combines configured LLM providers with automatic fallback."""
+
+    def __init__(self):
+        self.providers: List[Any] = []
+        if getattr(settings, "GEMINI_API_KEY", ""):
+            self.providers.append(GeminiProvider(settings.GEMINI_API_KEY))
+        if getattr(settings, "GROQ_API_KEY", ""):
+            self.providers.append(GroqProvider(settings.GROQ_API_KEY))
+        if not self.providers:
+            self.providers.append(NullProvider())
+
+    @property
+    def name(self) -> str:
+        if self.providers:
+            return getattr(self.providers[0], "name", "null")
+        return "null"
+
+    def propose_column_interpretations(self, **kwargs) -> Optional[List[Dict[str, Any]]]:
+        for p in self.providers:
+            res = p.propose_column_interpretations(**kwargs)
+            if res:
+                return res
+        return None
+
+    def propose_ambiguities(self, **kwargs) -> List[Dict[str, Any]]:
+        for p in self.providers:
+            res = p.propose_ambiguities(**kwargs)
+            if res:
+                return res
+        return []
+
+
 _provider: Optional[Any] = None
 
 
 def get_provider() -> Any:
-    """Process-wide provider; Gemini when a key is configured, else Null."""
+    """Process-wide provider using MultiProvider with automatic fallbacks."""
     global _provider
     if _provider is None:
-        if settings.GEMINI_API_KEY:
-            _provider = GeminiProvider(settings.GEMINI_API_KEY)
-        else:
-            _provider = NullProvider()
+        _provider = MultiProvider()
     return _provider

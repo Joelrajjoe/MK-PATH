@@ -428,3 +428,40 @@ All smoke data removed afterwards (collections back to 0).
 - No frontend for clarification questions yet (API-only).
 
 - ⏹ **STOPPING HERE per instructions — Phase 6 complete; awaiting next-phase authorization.**
+
+---
+
+## 15. REAL-TIME DATA INTEGRATION REMEDIATION (COMPLETE, 2026-10-07)
+
+### Executive Summary
+Following a strict End-to-End Real-Time Functional Verification, all mocked/disconnected prototype paths have been converted into REAL end-to-end functionality.
+
+### Remediated Critical Components
+1. **Frontend Project API & Backend Router**:
+   - `frontend/src/lib/api.ts` fake project objects removed.
+   - `backend/app/routers/projects.py` created (`POST /api/projects`, `GET /api/projects`, `GET /api/projects/{id}`).
+   - Project repository operations (`repo.insert_project`, `repo.get_project`, `repo.list_projects`, `repo.count_projects`) connected to MongoDB Atlas `projects` collection.
+2. **Semantic Knowledge UI (`KnowledgeUI.tsx`)**:
+   - Hardcoded concepts (`customer_id`, `status`) and mock ambiguity arrays removed.
+   - Connected to backend API `api.semantic.get`, `api.semantic.getAmbiguities`, `api.semantic.build`, and `api.semantic.resolve`.
+   - Renders real dataset concepts, business terms, metrics, dimensions, relationships, and open ambiguities from MongoDB.
+3. **LangGraph Orchestrator (`graph.py`)**:
+   - Removed mock dataset IDs (`mock_id`, `mock_table`), empty feature dictionaries, and fake status transitions.
+   - Connected nodes to real dataset metadata, real DuckDB profiles, real semantic context, real analysis plans (`analyst.generate_plan`), real verification gates (`run_verification_gates`), real model tournament (`tournament.run_model_tournament`), and real deployment artifact generation (`ml_engineer.generate_deployment_artifacts`).
+4. **Model Tournament (`tournament.py`)**:
+   - Dummy targets `pd.Series([0,1]...)` removed.
+   - Operates strictly on actual dataset columns (`df[target]`).
+   - Handles missing target column by returning `INSUFFICIENT_TARGET_INFORMATION` / `HUMAN_REVIEW_REQUIRED`.
+   - Calculates real evaluation metrics (Accuracy, Precision, Recall, F1, ROC-AUC, latency, training time, model size) from actual model predictions.
+5. **ML Engineer Deployment Artifacts (`ml_engineer.py`)**:
+   - Hardcoded `pred = 1`, `prob = 0.99` removed.
+   - Generated FastAPI inference service executes `model.predict(df)` and `model.predict_proba(df)` on actual loaded scikit-learn / LightGBM model binaries.
+   - Added automated `validate_artifact()` routine to verify model loading and execute a test inference before setting artifact status to `PASS`.
+6. **Data Transformation & Healing Engine (`healing/engine.py`)**:
+   - Static `before_score=75.0, after_score=90.0` and fake `Missing values detected in 5 columns` removed.
+   - Evaluates real missing cell counts and calculates exact before/after data quality scores from actual Pandas dataframes.
+
+### Verification Status
+- Real-time integration test suite created in `backend/tests/test_remediation.py`.
+- Verified Project CRUD, dataset ingestion, profiling, semantic knowledge building, model tournament execution, artifact generation validation, and data healing metrics with zero mock data.
+

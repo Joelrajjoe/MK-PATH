@@ -72,3 +72,35 @@ async def get_human_decision(question_id: str) -> Optional[Dict[str, Any]]:
     if coll is None:
         raise MetadataUnavailable("Metadata store unavailable.")
     return await coll.find_one({"question_id": question_id}, {"_id": 0})
+
+
+async def insert_project(doc: Dict[str, Any]) -> None:
+    await _require_coll("projects").insert_one(dict(doc))
+
+
+async def get_project(project_id: str) -> Optional[Dict[str, Any]]:
+    coll = db_manager.get_collection("projects")
+    if coll is None:
+        raise MetadataUnavailable("Metadata store unavailable.")
+    return await coll.find_one({"project_id": project_id}, {"_id": 0})
+
+
+async def list_projects(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+    coll = db_manager.get_collection("projects")
+    if coll is None:
+        raise MetadataUnavailable("Metadata store unavailable.")
+    cursor = (
+        coll.find({}, {"_id": 0})
+        .sort("created_at", -1)
+        .skip(offset)
+        .limit(limit)
+    )
+    return [doc async for doc in cursor]
+
+
+async def count_projects() -> int:
+    coll = db_manager.get_collection("projects")
+    if coll is None:
+        raise MetadataUnavailable("Metadata store unavailable.")
+    return await coll.count_documents({})
+

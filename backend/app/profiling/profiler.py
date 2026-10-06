@@ -474,4 +474,6 @@ def profile_summary(report: Dict[str, Any]) -> Dict[str, Any]:
         "overall_missing_ratio": report["statistics"].get(
             "overall_missing_ratio", 0.0
         ),
+        "row_count": report["statistics"].get("row_count", 0),
+        "column_count": report["statistics"].get("column_count", 0),
     }

@@ -1,4 +1,4 @@
-import { useParams, useNavigate, useLocation, Routes, Route } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import DataUpload from './data/DataUpload'
 import DatasetExplorer from './data/DatasetExplorer'
@@ -52,14 +52,11 @@ export default function ProjectWorkspace() {
           </TabsContent>
 
           <TabsContent value="data" className="h-full">
-            <Routes>
-              <Route path="/" element={<DataUpload projectId={projectId!} />} />
-              <Route path=":datasetId" element={<DatasetExplorer />} />
-            </Routes>
+            {pathParts[4] ? <DatasetExplorer /> : <DataUpload projectId={projectId!} />}
           </TabsContent>
           
           <TabsContent value="knowledge" className="h-full">
-            <KnowledgeUI />
+            <KnowledgeUI projectId={projectId} />
           </TabsContent>
 
           <TabsContent value="agents" className="h-full">
@@ -67,18 +64,11 @@ export default function ProjectWorkspace() {
           </TabsContent>
           
           <TabsContent value="analysis" className="h-full">
-            <Routes>
-              <Route path="/" element={<DataAnalystWorkspace />} />
-              <Route path="causal" element={<CausalAnalysis />} />
-            </Routes>
+            {pathParts[4] === 'causal' ? <CausalAnalysis /> : <DataAnalystWorkspace />}
           </TabsContent>
 
           <TabsContent value="verification" className="h-full">
-            <Routes>
-              <Route path="/" element={<VerificationCenter />} />
-              <Route path="leakage" element={<TemporalLeakage />} />
-              <Route path="*" element={<VerificationCenter />} />
-            </Routes>
+            {pathParts[4] === 'leakage' ? <TemporalLeakage /> : <VerificationCenter />}
           </TabsContent>
 
           <TabsContent value="models" className="h-full">

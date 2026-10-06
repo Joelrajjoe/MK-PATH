@@ -12,11 +12,15 @@ from typing import Any, Dict
 
 from fastapi import FastAPI, Response
 
+from fastapi.middleware.cors import CORSMiddleware
+
 from .config import settings
 from .database import db_manager
 from .routers import datasets as datasets_router
 from .routers import semantic as semantic_router
 from .routers import runs as runs_router
+from .routers import projects as projects_router
+from .routers import pipeline as pipeline_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("mkpath.main")
@@ -55,9 +59,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(projects_router.router)
 app.include_router(datasets_router.router)
 app.include_router(semantic_router.router)
 app.include_router(runs_router.router)
+app.include_router(pipeline_router.router)
 
 
 @app.get("/")

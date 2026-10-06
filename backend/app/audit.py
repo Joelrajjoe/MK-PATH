@@ -14,7 +14,10 @@ async def record_audit(
     status: str = "ok",
     upload_id: Optional[str] = None,
     dataset_id: Optional[str] = None,
+    project_id: Optional[str] = None,
+    run_id: Optional[str] = None,
     details: Optional[Dict[str, Any]] = None,
+    **kwargs: Any,
 ) -> bool:
     """Insert one audit event. Never raises; never records credentials.
 
@@ -31,8 +34,15 @@ async def record_audit(
         doc["upload_id"] = upload_id
     if dataset_id:
         doc["dataset_id"] = dataset_id
+    if project_id:
+        doc["project_id"] = project_id
+    if run_id:
+        doc["run_id"] = run_id
     if details:
         doc["details"] = details
+    for k, v in kwargs.items():
+        if v is not None:
+            doc[k] = v
     if coll is None:
         logger.warning("Audit store unavailable; event '%s' NOT persisted.", event_type)
         return False
