@@ -1,0 +1,254 @@
+[
+  {
+    "file": "backend/app/config.py",
+    "line": 4,
+    "match": "hardcoded",
+    "content": "- Credentials only via environment / .env file, never hardcoded.",
+    "category": "LEGITIMATE_CONFIG"
+  },
+  {
+    "file": "backend/app/config.py",
+    "line": 24,
+    "match": "placeholder",
+    "content": "# LLM (used in later phases; placeholder here, never hardcoded)",
+    "category": "DOCUMENTATION"
+  },
+  {
+    "file": "backend/app/database.py",
+    "line": 4,
+    "match": "hardcoded",
+    "content": "- Connection comes from MONGODB_URI / MONGODB_DATABASE only; never hardcoded.",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "backend/app/analysis/analyst.py",
+    "line": 79,
+    "match": "mock",
+    "content": "No mock data is produced; all numbers originate from SQL aggregation over user data.",
+    "category": "PRODUCTION_MOCK"
+  },
+  {
+    "file": "backend/app/ingestion/service.py",
+    "line": 344,
+    "match": "fake",
+    "content": "# Nothing ingested -> structured fatal error (never a fake success).",
+    "category": "DOCUMENTATION"
+  },
+  {
+    "file": "backend/app/modeling/tournament.py",
+    "line": 221,
+    "match": "auc = 0.0",
+    "content": "auc = 0.0",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "backend/app/semantic/builder.py",
+    "line": 256,
+    "match": "confidence=0.9",
+    "content": "confidence=0.9,",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "backend/app/semantic/builder.py",
+    "line": 290,
+    "match": "confidence=0.6",
+    "content": "confidence=0.6,",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "backend/app/semantic/builder.py",
+    "line": 302,
+    "match": "confidence=0.6",
+    "content": "confidence=0.6,",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "backend/app/semantic/builder.py",
+    "line": 312,
+    "match": "confidence=0.6",
+    "content": "confidence=0.6,",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "backend/app/semantic/builder.py",
+    "line": 327,
+    "match": "confidence=0.6",
+    "content": "confidence=0.6,",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "backend/app/semantic/builder.py",
+    "line": 340,
+    "match": "confidence=0.65",
+    "content": "confidence=0.65,",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "backend/app/semantic/builder.py",
+    "line": 353,
+    "match": "confidence=0.6",
+    "content": "confidence=0.6,",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "backend/app/semantic/builder.py",
+    "line": 365,
+    "match": "confidence=0.7",
+    "content": "confidence=0.7,",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "backend/app/semantic/builder.py",
+    "line": 378,
+    "match": "confidence=0.7",
+    "content": "confidence=0.7,",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "backend/app/semantic/builder.py",
+    "line": 393,
+    "match": "confidence=0.75",
+    "content": "confidence=0.75 if name_matched else 0.6,",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "backend/app/semantic/builder.py",
+    "line": 422,
+    "match": "confidence = 0.6",
+    "content": "t.confidence = 0.6",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "backend/app/semantic/builder.py",
+    "line": 433,
+    "match": "confidence=0.95",
+    "content": "confidence=0.95,",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "backend/app/semantic/builder.py",
+    "line": 497,
+    "match": "confidence=0.5",
+    "content": "label=n, description=\"numeric column proposed by profiling\", confidence=0.5",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "backend/app/semantic/builder.py",
+    "line": 618,
+    "match": "confidence=0.4",
+    "content": "confidence=0.4,",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "backend/tests/test_ingestion.py",
+    "line": 72,
+    "match": "fake",
+    "content": "# quality before profiling -> controlled 404, never fake data",
+    "category": "LEGITIMATE_TEST"
+  },
+  {
+    "file": "backend/tests/test_ingestion.py",
+    "line": 327,
+    "match": "fake",
+    "content": "\"tables/script.exe\": b\"MZ fake binary\",",
+    "category": "LEGITIMATE_TEST"
+  },
+  {
+    "file": "backend/tests/test_ingestion.py",
+    "line": 360,
+    "match": "fake",
+    "content": "resp = upload_fn(\"fake.zip\", b\"this is definitely not a zip archive\", mime=\"application/zip\")",
+    "category": "LEGITIMATE_TEST"
+  },
+  {
+    "file": "backend/tests/test_profiling.py",
+    "line": 223,
+    "match": "fake",
+    "content": "fake = \"0\" * 32",
+    "category": "LEGITIMATE_TEST"
+  },
+  {
+    "file": "backend/tests/test_profiling.py",
+    "line": 224,
+    "match": "fake",
+    "content": "assert client.post(f\"/api/datasets/{fake}/profile\").status_code == 404",
+    "category": "LEGITIMATE_TEST"
+  },
+  {
+    "file": "backend/tests/test_profiling.py",
+    "line": 225,
+    "match": "fake",
+    "content": "assert client.get(f\"/api/datasets/{fake}/profile\").status_code == 404",
+    "category": "LEGITIMATE_TEST"
+  },
+  {
+    "file": "backend/tests/test_projects.py",
+    "line": 13,
+    "match": "mock",
+    "content": "\"businessGoal\": \"Predict churn with zero mock data\"",
+    "category": "LEGITIMATE_TEST"
+  },
+  {
+    "file": "backend/tests/test_semantic.py",
+    "line": 256,
+    "match": "fake",
+    "content": "fake = \"0\" * 32",
+    "category": "LEGITIMATE_TEST"
+  },
+  {
+    "file": "backend/tests/test_semantic.py",
+    "line": 257,
+    "match": "fake",
+    "content": "assert client.post(f\"/api/datasets/{fake}/semantic\", json={}).status_code == 404",
+    "category": "LEGITIMATE_TEST"
+  },
+  {
+    "file": "backend/tests/test_semantic.py",
+    "line": 258,
+    "match": "fake",
+    "content": "assert client.get(f\"/api/datasets/{fake}/semantic\").status_code == 404",
+    "category": "LEGITIMATE_TEST"
+  },
+  {
+    "file": "frontend/src/components/SemanticBreakpoint.tsx",
+    "line": 20,
+    "match": "setTimeout",
+    "content": "setTimeout(() => setState('RESUMING'), 1000)",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "frontend/src/components/SemanticBreakpoint.tsx",
+    "line": 21,
+    "match": "setTimeout",
+    "content": "setTimeout(() => {",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "frontend/src/components/ui/input.tsx",
+    "line": 14,
+    "match": "placeholder",
+    "content": "\"flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent fi",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "frontend/src/pages/projects/ProjectNew.tsx",
+    "line": 65,
+    "match": "placeholder",
+    "content": "placeholder=\"e.g. Predict customer churn within 30 days\"",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "frontend/src/pages/projects/analysis/DataAnalystWorkspace.tsx",
+    "line": 89,
+    "match": "placeholder",
+    "content": "placeholder=\"What do you want to analyze? (e.g. Analyze customer churn and spend by region)\"",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "frontend/src/pages/projects/knowledge/KnowledgeUI.tsx",
+    "line": 136,
+    "match": "placeholder",
+    "content": "<Input value={goal} onChange={e => setGoal(e.target.value)} placeholder=\"e.g. Predict customer churn within 30 days\" />",
+    "category": "PRODUCTION_HARDCODE"
+  }
+]

@@ -1,0 +1,21 @@
+{
+  "selected_model": "Linear Regression",
+  "candidates": [
+    {
+      "model_name": "Linear Regression",
+      "system_r2": -0.7098631989783557,
+      "system_rmse": 287.9286929791816,
+      "system_mae": 71.88425124314436,
+      "system_latency_ms": 0.003339649141282067,
+      "is_pareto": true
+    },
+    {
+      "model_name": "Random Forest Regressor",
+      "system_r2": -0.1505752809177805,
+      "system_rmse": 236.19015050500008,
+      "system_mae": 30.581129889506187,
+      "system_latency_ms": 0.03497632758029405,
+      "is_pareto": false
+    }
+  ]
+}

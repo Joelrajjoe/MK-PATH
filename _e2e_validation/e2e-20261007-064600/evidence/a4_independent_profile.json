@@ -1,0 +1,82 @@
+{
+  "rows": 9994,
+  "cols": 21,
+  "null_counts": {
+    "Row ID": 0,
+    "Order ID": 0,
+    "Order Date": 0,
+    "Ship Date": 0,
+    "Ship Mode": 0,
+    "Customer ID": 0,
+    "Customer Name": 0,
+    "Segment": 0,
+    "Country": 0,
+    "City": 0,
+    "State": 0,
+    "Postal Code": 0,
+    "Region": 0,
+    "Product ID": 0,
+    "Category": 0,
+    "Sub-Category": 0,
+    "Product Name": 0,
+    "Sales": 0,
+    "Quantity": 0,
+    "Discount": 0,
+    "Profit": 0
+  },
+  "unique_counts": {
+    "Row ID": 9994,
+    "Order ID": 5009,
+    "Order Date": 1237,
+    "Ship Date": 1334,
+    "Ship Mode": 4,
+    "Customer ID": 793,
+    "Customer Name": 793,
+    "Segment": 3,
+    "Country": 1,
+    "City": 531,
+    "State": 49,
+    "Postal Code": 631,
+    "Region": 4,
+    "Product ID": 1862,
+    "Category": 3,
+    "Sub-Category": 17,
+    "Product Name": 1850,
+    "Sales": 5825,
+    "Quantity": 14,
+    "Discount": 12,
+    "Profit": 7287
+  },
+  "numeric_stats": {
+    "Sales": {
+      "mean": 229.85800083049833,
+      "std": 623.2451005086807,
+      "min": 0.444,
+      "max": 22638.48
+    },
+    "Quantity": {
+      "mean": 3.789573744246548,
+      "std": 2.2251096911414,
+      "min": 1.0,
+      "max": 14.0
+    },
+    "Profit": {
+      "mean": 28.65689630778467,
+      "std": 234.2601076909573,
+      "min": -6599.978,
+      "max": 8399.976
+    }
+  },
+  "top_categories": {
+    "Category": {
+      "Office Supplies": 6026,
+      "Furniture": 2121,
+      "Technology": 1847
+    },
+    "Segment": {
+      "Consumer": 5191,
+      "Corporate": 3020,
+      "Home Office": 1783
+    }
+  }
+}

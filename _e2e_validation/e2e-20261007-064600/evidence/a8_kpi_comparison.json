@@ -1,0 +1,58 @@
+{
+  "Sales": {
+    "system_sum": 2297200.860299955,
+    "ind_sum": 2297200.8603000003,
+    "diff_sum": 4.516914486885071e-08,
+    "system_avg": 229.8580008304938,
+    "ind_avg": 229.85800083049833,
+    "diff_avg": 4.519051799434237e-12,
+    "system_min": 0.444,
+    "ind_min": 0.444,
+    "system_max": 22638.48,
+    "ind_max": 22638.48,
+    "tolerance": 0.0001,
+    "status": "PASS"
+  },
+  "Quantity": {
+    "system_sum": 37873.0,
+    "ind_sum": 37873.0,
+    "diff_sum": 0.0,
+    "system_avg": 3.789573744246548,
+    "ind_avg": 3.789573744246548,
+    "diff_avg": 0.0,
+    "system_min": 1.0,
+    "ind_min": 1.0,
+    "system_max": 14.0,
+    "ind_max": 14.0,
+    "tolerance": 0.0001,
+    "status": "PASS"
+  },
+  "Profit": {
+    "system_sum": 286397.0217000013,
+    "ind_sum": 286397.0217,
+    "diff_sum": 1.3387762010097504e-09,
+    "system_avg": 28.656896307784802,
+    "ind_avg": 28.65689630778467,
+    "diff_avg": 1.3145040611561853e-13,
+    "system_min": -6599.978,
+    "ind_min": -6599.978,
+    "system_max": 8399.976,
+    "ind_max": 8399.976,
+    "tolerance": 0.0001,
+    "status": "PASS"
+  },
+  "Discount": {
+    "system_sum": 1561.0900000000954,
+    "ind_sum": 1561.09,
+    "diff_sum": 9.549694368615746e-11,
+    "system_avg": 0.15620272163298934,
+    "ind_avg": 0.15620272163297977,
+    "diff_avg": 9.575673587391975e-15,
+    "system_min": 0.0,
+    "ind_min": 0.0,
+    "system_max": 0.8,
+    "ind_max": 0.8,
+    "tolerance": 0.0001,
+    "status": "PASS"
+  }
+}

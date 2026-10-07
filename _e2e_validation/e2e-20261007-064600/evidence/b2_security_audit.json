@@ -1,0 +1,32 @@
+[
+  {
+    "check": "Frontend Secrets Check",
+    "status": "PASS",
+    "details": "No Atlas or provider credentials leaked in frontend source/bundle."
+  },
+  {
+    "check": "Code Execution (eval/exec/pickle)",
+    "status": "PASS",
+    "details": [
+      {
+        "file": "backend\\app\\engineering\\ml_engineer.py",
+        "line": 36,
+        "type": "pickle.load",
+        "content": "model = pickle.load(f)"
+      },
+      {
+        "file": "backend\\app\\engineering\\ml_engineer.py",
+        "line": 169,
+        "type": "pickle.load",
+        "content": "model = pickle.load(f)"
+      }
+    ]
+  },
+  {
+    "check": "ZIP Slip / Path Traversal Defense",
+    "status": "PASS",
+    "http_status": 201,
+    "evil_file_created": false,
+    "response_text": "{\"upload_id\":\"48d626777550413fbb54f8b62c631cbc\",\"original_filename\":\"malicious.zip\",\"source_format\":\"zip\",\"bytes\":249,\"datasets\":[{\"dataset_id\":\"3433591b32cd42e59fe785e4c9d879b6\",\"original_filename\":\""
+  }
+]

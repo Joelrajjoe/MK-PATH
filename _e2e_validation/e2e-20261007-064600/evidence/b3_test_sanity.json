@@ -1,0 +1,14 @@
+{
+  "tests/test_projects.py": {
+    "status": "PASS",
+    "passed": 1,
+    "failed": 0,
+    "duration_s": 13.77
+  },
+  "tests/test_remediation.py": {
+    "status": "PASS",
+    "passed": 1,
+    "failed": 0,
+    "duration_s": 17.87
+  }
+}
