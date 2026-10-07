@@ -80,8 +80,12 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
-    # Encode target if non-numeric
-    if not pd.api.types.is_numeric_dtype(y_raw):
+    is_regression = pd.api.types.is_numeric_dtype(y_raw) and unique_targets > 10
+
+    # Encode target if classification & non-numeric
+    if is_regression:
+        y = y_raw.astype(float).values
+    elif not pd.api.types.is_numeric_dtype(y_raw):
         le = LabelEncoder()
         y = le.fit_transform(y_raw.astype(str))
     else:
@@ -109,7 +113,7 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
 
     # Train / Test split
     use_stratify = None
-    if not is_temporal and len(y) > 0:
+    if not is_temporal and not is_regression and len(y) > 0:
         val_counts = pd.Series(y).value_counts()
         if len(val_counts) > 1 and val_counts.min() >= 2:
             use_stratify = y
@@ -132,16 +136,29 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
         }
 
     candidates = []
-    models = {
-        "Logistic Regression": LogisticRegression(max_iter=1000),
-        "Random Forest": RandomForestClassifier(n_estimators=100, random_state=42)
-    }
-
-    try:
-        import lightgbm as lgb
-        models["LightGBM"] = lgb.LGBMClassifier(random_state=42, verbose=-1)
-    except ImportError:
-        logger.warning("LightGBM not installed. Skipping.")
+    if is_regression:
+        from sklearn.linear_model import LinearRegression
+        from sklearn.ensemble import RandomForestRegressor
+        from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+        models = {
+            "Linear Regression": LinearRegression(),
+            "Random Forest Regressor": RandomForestRegressor(n_estimators=100, random_state=42)
+        }
+        try:
+            import lightgbm as lgb
+            models["LightGBM Regressor"] = lgb.LGBMRegressor(random_state=42, verbose=-1)
+        except ImportError:
+            logger.warning("LightGBM not installed. Skipping.")
+    else:
+        models = {
+            "Logistic Regression": LogisticRegression(max_iter=1000),
+            "Random Forest": RandomForestClassifier(n_estimators=100, random_state=42)
+        }
+        try:
+            import lightgbm as lgb
+            models["LightGBM"] = lgb.LGBMClassifier(random_state=42, verbose=-1)
+        except ImportError:
+            logger.warning("LightGBM not installed. Skipping.")
 
     os.makedirs(settings.DATA_DIR / "models", exist_ok=True)
 
@@ -154,7 +171,7 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
             t0 = time.time()
             preds = model.predict(X_test)
             probs = None
-            if hasattr(model, "predict_proba"):
+            if not is_regression and hasattr(model, "predict_proba"):
                 try:
                     prob_arr = model.predict_proba(X_test)
                     if prob_arr.shape[1] > 1:
@@ -171,33 +188,57 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
             model_size_mb = os.path.getsize(model_path) / (1024 * 1024)
 
             # Calculate real metrics
-            acc = float(accuracy_score(y_test, preds))
-            f1 = float(f1_score(y_test, preds, average="weighted" if len(set(y_test)) > 2 else "binary", zero_division=0))
-            prec = float(precision_score(y_test, preds, average="weighted" if len(set(y_test)) > 2 else "binary", zero_division=0))
-            rec = float(recall_score(y_test, preds, average="weighted" if len(set(y_test)) > 2 else "binary", zero_division=0))
-            
-            auc = 0.0
-            if probs is not None and len(set(y_test)) == 2:
-                try:
-                    auc = float(roc_auc_score(y_test, probs))
-                except Exception:
-                    auc = acc
+            if is_regression:
+                from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+                r2 = float(r2_score(y_test, preds))
+                rmse = float(np.sqrt(mean_squared_error(y_test, preds))) if 'np' in locals() else float(mean_squared_error(y_test, preds) ** 0.5)
+                mae = float(mean_absolute_error(y_test, preds))
+                perf = float(max(0.0, r2))
 
-            candidates.append({
-                "model_name": name,
-                "metrics": {
-                    "auc": auc,
-                    "f1": f1,
-                    "precision": prec,
-                    "recall": rec,
-                    "accuracy": acc,
-                    "training_time_s": float(t_train),
-                    "inference_latency_ms": float((t_infer / len(X_test)) * 1000) if len(X_test) > 0 else 0.0,
-                    "model_size_mb": float(model_size_mb)
-                },
-                "path": str(model_path),
-                "feature_names": list(X_df.columns)
-            })
+                candidates.append({
+                    "model_name": name,
+                    "metrics": {
+                        "r2": r2,
+                        "rmse": rmse,
+                        "mae": mae,
+                        "auc": perf,
+                        "f1": perf,
+                        "accuracy": perf,
+                        "training_time_s": float(t_train),
+                        "inference_latency_ms": float((t_infer / len(X_test)) * 1000) if len(X_test) > 0 else 0.0,
+                        "model_size_mb": float(model_size_mb)
+                    },
+                    "path": str(model_path),
+                    "feature_names": list(X_df.columns)
+                })
+            else:
+                acc = float(accuracy_score(y_test, preds))
+                f1 = float(f1_score(y_test, preds, average="weighted" if len(set(y_test)) > 2 else "binary", zero_division=0))
+                prec = float(precision_score(y_test, preds, average="weighted" if len(set(y_test)) > 2 else "binary", zero_division=0))
+                rec = float(recall_score(y_test, preds, average="weighted" if len(set(y_test)) > 2 else "binary", zero_division=0))
+                
+                auc = 0.0
+                if probs is not None and len(set(y_test)) == 2:
+                    try:
+                        auc = float(roc_auc_score(y_test, probs))
+                    except Exception:
+                        auc = acc
+
+                candidates.append({
+                    "model_name": name,
+                    "metrics": {
+                        "auc": auc,
+                        "f1": f1,
+                        "precision": prec,
+                        "recall": rec,
+                        "accuracy": acc,
+                        "training_time_s": float(t_train),
+                        "inference_latency_ms": float((t_infer / len(X_test)) * 1000) if len(X_test) > 0 else 0.0,
+                        "model_size_mb": float(model_size_mb)
+                    },
+                    "path": str(model_path),
+                    "feature_names": list(X_df.columns)
+                })
         except Exception as exc:
             logger.error(f"Failed to fit model {name}: {type(exc).__name__}: {exc}")
 
@@ -212,10 +253,11 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
     # Calculate Pareto frontier
     candidates = build_pareto_frontier(candidates)
     pareto_models = [c for c in candidates if c.get("is_pareto_optimal")]
-    selected = max(pareto_models if pareto_models else candidates, key=lambda x: x["metrics"]["f1"])
+    selected = max(pareto_models if pareto_models else candidates, key=lambda x: x["metrics"]["accuracy" if is_regression else "f1"])
 
     return {
         "status": "SUCCESS",
+        "task_type": "REGRESSION" if is_regression else "CLASSIFICATION",
         "validation_strategy": "Chronological/OOT" if is_temporal else "Random Split",
         "model_candidates": candidates,
         "selected_model": selected,

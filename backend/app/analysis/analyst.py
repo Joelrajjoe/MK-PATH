@@ -3,6 +3,8 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
+from decimal import Decimal
+import pandas as pd
 import duckdb
 
 from ..semantic.llm import get_provider
@@ -22,76 +24,126 @@ def generate_plan(
     profile: Dict[str, Any],
     semantic_context: Dict[str, Any],
 ) -> AnalysisPlan:
-    llm = get_provider()
-    
-    prompt = f"""
-You are an expert Data Analyst. Your task is to generate a structured analytical plan based on the provided inputs.
-Do NOT fabricate numerical results.
+    """
+    Propose structured analytical plan from real schema, profile, and semantic context.
+    """
+    logger.info("Generating analytical plan for business goal: %s", business_goal)
 
-Inputs:
-Business Goal: {business_goal}
-Schema: {json.dumps(schema, default=str)}
-Profile Summary: {json.dumps(profile, default=str)}
-Semantic Context: {json.dumps(semantic_context, default=str)}
+    cols = []
+    if isinstance(schema, dict) and "columns" in schema:
+        cols = [c["name"] for c in schema["columns"] if isinstance(c, dict) and "name" in c]
+    elif isinstance(schema, list):
+        cols = [c.get("name") for c in schema if isinstance(c, dict) and "name" in c]
 
-Create a structured JSON output with the following fields:
-- objective: a short string describing what we want to find out
-- metrics: a list of string column names that can be aggregated
-- dimensions: a list of string column names to segment by
-- time_dimension: a string column name representing time (or null if none)
+    num_cols = []
+    cat_cols = []
+    time_col = None
 
-The output must be pure JSON mapping to the requested schema.
-"""
-    structured_llm = llm.with_structured_output(AnalysisPlan)
-    return structured_llm.invoke(prompt)
+    if isinstance(profile, dict) and "column_profiles" in profile:
+        for c_name, c_info in profile["column_profiles"].items():
+            if isinstance(c_info, dict):
+                k = c_info.get("type_kind") or c_info.get("kind")
+                if k in ("numeric", "float", "int", "integer"):
+                    num_cols.append(c_name)
+                elif k in ("datetime", "date", "timestamp"):
+                    time_col = c_name
+                else:
+                    cat_cols.append(c_name)
 
-def execute_plan(plan: AnalysisPlan, dataset: Dict[str, Any]) -> Dict[str, Any]:
+    if not num_cols and not cat_cols and cols:
+        num_cols = cols[:2]
+        cat_cols = cols[2:]
+
+    # Extract roles from semantic context if available
+    if isinstance(semantic_context, dict):
+        if semantic_context.get("metrics"):
+            num_cols = [m.get("name") for m in semantic_context["metrics"] if m.get("name")]
+        if semantic_context.get("dimensions"):
+            cat_cols = [d.get("name") for d in semantic_context["dimensions"] if d.get("name")]
+
+    objective = f"Analyze {business_goal or 'dataset metrics & segment distributions'}"
+    metrics = num_cols[:4] if num_cols else cols[:2]
+    dimensions = cat_cols[:3] if cat_cols else (cols[2:4] if len(cols) > 2 else cols[:1])
+
+    return AnalysisPlan(
+        objective=objective,
+        metrics=metrics,
+        dimensions=dimensions,
+        time_dimension=time_col
+    )
+
+
+def execute_plan(plan: Any, dataset: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Execute structured analytical plan via DuckDB on real dataset Parquet views.
+    No mock data is produced; all numbers originate from SQL aggregation over user data.
+    """
+    if isinstance(plan, dict):
+        plan_obj = AnalysisPlan(**plan)
+    else:
+        plan_obj = plan
+
     dataset_id = dataset["dataset_id"]
-    table_name = dataset["table_name"]
-    db_path = str(settings.DB_DIR / f"{dataset_id}.duckdb")
-    
+    from ..ingestion import registry
+    conn = registry.get_conn()
+    v_name = registry.view_name(dataset_id)
+
+    # Ensure view exists
+    try:
+        conn.execute(f'SELECT 1 FROM "{v_name}" LIMIT 1')
+    except Exception:
+        parquet_path = str(settings.DATASETS_DIR / f"{dataset_id}.parquet")
+        registry.register(dataset_id, parquet_path)
+
     report = {
-        "plan": plan.model_dump(),
+        "objective": plan_obj.objective,
+        "plan": plan_obj.model_dump(),
         "kpis": {},
         "segments": {},
         "provenance": [],
-        "executive_summary": f"Automated analysis for {plan.objective} executed successfully."
+        "executive_summary": f"Deterministic execution completed for objective: {plan_obj.objective}."
     }
-    
-    with duckdb.connect(db_path, read_only=True) as conn:
-        for metric in plan.metrics:
-            try:
-                # Basic KPI
-                query_kpi = f"SELECT SUM({metric}) as sum_val, AVG({metric}) as avg_val FROM {table_name}"
-                res_kpi = conn.execute(query_kpi).df().to_dict(orient="records")[0]
-                report["kpis"][metric] = res_kpi
-                
-                report["provenance"].append({
-                    "dataset": dataset_id,
-                    "table": table_name,
-                    "columns": [metric],
-                    "query": query_kpi,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                })
-            except Exception as e:
-                logger.warning(f"Failed to calculate KPI for {metric}: {e}")
 
-        if plan.dimensions and plan.metrics:
-            dim = plan.dimensions[0]
-            metric = plan.metrics[0]
-            try:
-                query_seg = f"SELECT {dim}, SUM({metric}) as sum_val, AVG({metric}) as avg_val FROM {table_name} GROUP BY {dim} LIMIT 10"
-                res_seg = conn.execute(query_seg).df().to_dict(orient="records")
-                report["segments"][f"{metric}_by_{dim}"] = res_seg
-                
-                report["provenance"].append({
-                    "dataset": dataset_id,
-                    "table": table_name,
-                    "columns": [dim, metric],
-                    "query": query_seg,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                })
-            except Exception as e:
-                logger.warning(f"Failed to calculate segment for {dim} and {metric}: {e}")
+    for metric in plan_obj.metrics:
+        col_q = f'"{metric}"'
+        try:
+            query_kpi = f'SELECT SUM({col_q}) as sum_val, AVG({col_q}) as avg_val, MIN({col_q}) as min_val, MAX({col_q}) as max_val FROM "{v_name}"'
+            res_df = conn.execute(query_kpi).df()
+            res_dict = res_df.to_dict(orient="records")[0] if not res_df.empty else {}
+            
+            # Convert non-serializable numbers
+            clean_dict = {k: (float(v) if pd.notnull(v) and isinstance(v, (int, float, Decimal)) else (None if pd.isnull(v) else v)) for k, v in res_dict.items()}
+            report["kpis"][metric] = clean_dict
+            
+            report["provenance"].append({
+                "dataset": dataset_id,
+                "table": v_name,
+                "columns": [metric],
+                "query": query_kpi,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            })
+        except Exception as e:
+            logger.warning(f"Failed to calculate KPI for metric '{metric}': {e}")
+
+    if plan_obj.dimensions and plan_obj.metrics:
+        dim = plan_obj.dimensions[0]
+        metric = plan_obj.metrics[0]
+        dim_q = f'"{dim}"'
+        met_q = f'"{metric}"'
+        try:
+            query_seg = f'SELECT {dim_q} as segment, COUNT(*) as record_count, AVG({met_q}) as avg_val FROM "{v_name}" GROUP BY {dim_q} ORDER BY record_count DESC LIMIT 10'
+            res_df = conn.execute(query_seg).df()
+            res_records = res_df.to_dict(orient="records") if not res_df.empty else []
+            
+            report["segments"][f"{metric}_by_{dim}"] = res_records
+            report["provenance"].append({
+                "dataset": dataset_id,
+                "table": v_name,
+                "columns": [dim, metric],
+                "query": query_seg,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            })
+        except Exception as e:
+            logger.warning(f"Failed to calculate segment for '{dim}' and '{metric}': {e}")
 
     return report
