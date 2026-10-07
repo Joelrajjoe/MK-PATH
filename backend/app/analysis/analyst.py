@@ -14,9 +14,9 @@ logger = logging.getLogger("mkpath.analysis.analyst")
 
 class AnalysisPlan(BaseModel):
     objective: str = Field(description="The analytical objective")
-    metrics: List[str] = Field(description="List of metrics to calculate (column names)")
-    dimensions: List[str] = Field(description="List of dimensions for grouping/segmentation (column names)")
-    time_dimension: Optional[str] = Field(description="Column name to use for time-based analysis")
+    metrics: List[str] = Field(default_factory=list, description="List of metrics to calculate (column names)")
+    dimensions: List[str] = Field(default_factory=list, description="List of dimensions for grouping/segmentation (column names)")
+    time_dimension: Optional[str] = Field(default=None, description="Column name to use for time-based analysis")
 
 def generate_plan(
     business_goal: str,
