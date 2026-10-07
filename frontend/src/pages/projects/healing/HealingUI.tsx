@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { AlertCircle, Wand2, ArrowRight, ShieldAlert, CheckCircle, Loader2 } from 'lucide-react'
@@ -7,6 +7,7 @@ import { api } from '@/lib/api'
 
 export default function HealingUI() {
   const { projectId } = useParams<{ projectId: string }>()
+  const navigate = useNavigate()
   const [datasets, setDatasets] = useState<any[]>([])
   const [selectedDatasetId, setSelectedDatasetId] = useState('')
   const [generating, setGenerating] = useState(false)
@@ -188,6 +189,25 @@ export default function HealingUI() {
                       {healingEvent.derived_path}
                     </span>
                   </div>
+                  {healingEvent.row_count ? (
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t">
+                      <div>
+                        <span className="text-muted-foreground uppercase font-semibold block text-[10px]">Cleaned Rows</span>
+                        <span className="font-semibold text-sm text-foreground">{Number(healingEvent.row_count).toLocaleString()}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground uppercase font-semibold block text-[10px]">Features Preserved</span>
+                        <span className="font-semibold text-sm text-foreground">{healingEvent.column_count}</span>
+                      </div>
+                    </div>
+                  ) : null}
+                  <Button
+                    className="w-full mt-3 bg-emerald-600 hover:bg-emerald-700 text-white font-medium flex items-center justify-center gap-2 shadow-sm"
+                    onClick={() => navigate(`/projects/${projectId}/analysis?datasetId=${healingEvent.derived_dataset_id}`)}
+                  >
+                    <span>Proceed to Analysis with Preprocessed Dataset</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
                 </CardContent>
               </Card>
             )}
@@ -236,11 +256,21 @@ export default function HealingUI() {
                   <div className="divide-y text-xs">
                     {pastEvents.slice(0, 5).map((pe, idx) => (
                       <div key={idx} className="p-3 space-y-1">
-                        <div className="flex justify-between font-mono">
+                        <div className="flex items-center justify-between font-mono">
                           <span className="text-emerald-600 font-semibold">{pe.derived_dataset_id?.slice(0, 8)}...</span>
-                          <span className="text-muted-foreground text-[10px]">
-                            {pe.timestamp ? new Date(pe.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground text-[10px]">
+                              {pe.timestamp ? new Date(pe.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 text-[10px] px-1.5 text-primary hover:text-primary/80"
+                              onClick={() => navigate(`/projects/${projectId}/analysis?datasetId=${pe.derived_dataset_id}`)}
+                            >
+                              Analyze &rarr;
+                            </Button>
+                          </div>
                         </div>
                         <p className="text-[11px] text-muted-foreground truncate">{pe.plan?.problem_detected}</p>
                       </div>

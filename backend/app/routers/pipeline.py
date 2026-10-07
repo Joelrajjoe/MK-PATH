@@ -5,6 +5,7 @@ from pydantic import BaseModel
 import pandas as pd
 
 from ..database import db_manager
+from .. import repo
 from ..repo import get_dataset, MetadataUnavailable
 from ..analysis import analyst
 from ..modeling import tournament
@@ -128,10 +129,60 @@ async def apply_data_healing(req: HealingApplyRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail=f"Failed to load dataset view: {exc}")
 
     plan_obj = healing_engine.TransformationPlan(**req.plan)
-    event = healing_engine.apply_healing(df, plan_obj, req.dataset_id)
+    event = healing_engine.apply_healing(df, plan_obj, req.dataset_id, profile=ds_doc.get("profile"))
     event_dict = event.model_dump()
     event_dict["dataset_id"] = req.dataset_id
     event_dict["project_id"] = ds_doc.get("project_id")
+
+    # Register derived preprocessed dataset as a first-class project dataset
+    derived_schema = []
+    for col_name in (event.derived_columns or []):
+        col_type = "float" if col_name in df.columns and pd.api.types.is_float_dtype(df[col_name]) else "int" if col_name in df.columns and pd.api.types.is_integer_dtype(df[col_name]) else "string"
+        derived_schema.append({"name": col_name, "type": col_type, "nullable": True})
+
+    orig_name = ds_doc.get("original_filename") or ds_doc.get("name") or "dataset"
+    clean_name = orig_name.replace("Preprocessed - ", "")
+    derived_ds_doc = {
+        "dataset_id": event.derived_dataset_id,
+        "project_id": ds_doc.get("project_id"),
+        "table_name": f"ds_{event.derived_dataset_id}",
+        "name": f"Preprocessed - {clean_name}",
+        "original_filename": f"preprocessed_{clean_name}",
+        "source_format": "parquet",
+        "normalized_path": event.derived_path,
+        "storage_path": event.derived_path,
+        "row_count": event.row_count,
+        "column_count": event.column_count,
+        "schema": derived_schema,
+        "is_derived": True,
+        "derived_from": req.dataset_id,
+        "ingestion_status": "completed",
+        "created_at": repo.utcnow(),
+        "profile": {
+            "quality_score": event.quality_report.after_score,
+            "quality_grade": "A",
+            "issue_count": 0,
+            "engine": "deterministic:v1:duckdb+pyarrow+pandas",
+            "row_count": event.row_count,
+            "column_count": event.column_count,
+        }
+    }
+    try:
+        await repo.insert_dataset(derived_ds_doc)
+        registry.ensure_view(event.derived_dataset_id, event.derived_path)
+    except Exception as reg_exc:
+        logger.warning(f"Failed to register derived dataset: {reg_exc}")
+
+    if ds_doc.get("project_id"):
+        proj_coll = db_manager.get_collection("projects")
+        if proj_coll is not None:
+            try:
+                await proj_coll.update_one(
+                    {"project_id": ds_doc.get("project_id")},
+                    {"$inc": {"dataset_count": 1, "datasetCount": 1}}
+                )
+            except Exception:
+                pass
 
     from ..audit import record_audit
     await record_audit(
