@@ -54,7 +54,7 @@ export default function ProjectWorkspace() {
           </TabsContent>
 
           <TabsContent value="data" className="h-full">
-            {pathParts[4] ? <DatasetExplorer /> : <DataUpload projectId={projectId!} />}
+            {pathParts[4] ? <DatasetExplorer datasetId={pathParts[4]} /> : <DataUpload projectId={projectId!} />}
           </TabsContent>
           
           <TabsContent value="knowledge" className="h-full">

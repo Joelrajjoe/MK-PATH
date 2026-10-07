@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useLocation } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ArrowLeft, Play, AlertCircle, CheckCircle, Loader2 } from 'lucide-react'
 import { api, type Dataset } from '@/lib/api'
 
-export default function DatasetExplorer() {
-  const { projectId, datasetId } = useParams<{ projectId: string, datasetId: string }>()
+export default function DatasetExplorer({ datasetId: propDatasetId }: { datasetId?: string } = {}) {
+  const { projectId } = useParams<{ projectId: string }>()
+  const location = useLocation()
+  const pathParts = location.pathname.split('/')
+  const datasetId = propDatasetId || pathParts[4] || ''
   const [dataset, setDataset] = useState<Dataset | null>(null)
   const [schemaData, setSchemaData] = useState<any>(null)
   const [previewData, setPreviewData] = useState<any>(null)

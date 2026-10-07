@@ -82,6 +82,7 @@ def _http_from_ingestion(exc: IngestionError) -> HTTPException:
 async def upload_dataset(
     file: UploadFile = File(...),
     sheet_name: Optional[str] = Form(None),
+    project_id: Optional[str] = Form(None),
 ) -> Dict[str, Any]:
     _require_db()
     if not file.filename:
@@ -187,8 +188,20 @@ async def upload_dataset(
 
     for doc in result["datasets"]:
         doc["created_at"] = utcnow()
+        if project_id:
+            doc["project_id"] = project_id
     try:
         await repo.insert_datasets(result["datasets"])
+        if project_id:
+            coll = db_manager.get_collection("projects")
+            if coll is not None:
+                try:
+                    await coll.update_one(
+                        {"project_id": project_id},
+                        {"$inc": {"dataset_count": len(result["datasets"]), "datasetCount": len(result["datasets"])}},
+                    )
+                except Exception:
+                    pass
     except MetadataUnavailable:
         shutil.rmtree(upload_dir, ignore_errors=True)
         raise HTTPException(
@@ -203,6 +216,7 @@ async def upload_dataset(
         "dataset_upload",
         status="ok",
         upload_id=upload_id,
+        project_id=project_id,
         details={
             "filename": safe_name,
             "datasets": len(result["datasets"]),
@@ -216,6 +230,7 @@ async def upload_dataset(
             "dataset_ingested",
             status=doc["ingestion_status"],
             upload_id=upload_id,
+            project_id=project_id,
             dataset_id=doc["dataset_id"],
             details={
                 "table_name": doc["table_name"],
@@ -259,10 +274,11 @@ async def upload_dataset(
 async def list_datasets(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    project_id: Optional[str] = Query(None),
 ) -> Dict[str, Any]:
     _require_db()
-    items = await repo.list_datasets(limit=limit, offset=offset)
-    total = await repo.count_datasets()
+    items = await repo.list_datasets(limit=limit, offset=offset, project_id=project_id)
+    total = await repo.count_datasets(project_id=project_id)
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 

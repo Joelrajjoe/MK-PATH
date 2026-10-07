@@ -89,9 +89,10 @@ export const api = {
     },
   },
   datasets: {
-    list: async (_projectId?: string): Promise<Dataset[]> => {
+    list: async (projectId?: string): Promise<Dataset[]> => {
       try {
-        const res = await fetch(`${API_BASE}/datasets`);
+        const url = projectId ? `${API_BASE}/datasets?project_id=${projectId}` : `${API_BASE}/datasets`;
+        const res = await fetch(url);
         if (!res.ok) throw new Error('Failed to fetch datasets');
         const data = await res.json();
         return (data.items || []).map((d: any) => ({
@@ -147,9 +148,12 @@ export const api = {
       }
       return await res.json();
     },
-    upload: async (_projectId: string, file: File, onProgress?: (p: number) => void): Promise<any> => {
+    upload: async (projectId: string, file: File, onProgress?: (p: number) => void): Promise<any> => {
       const formData = new FormData();
       formData.append('file', file);
+      if (projectId) {
+        formData.append('project_id', projectId);
+      }
       
       const xhr = new XMLHttpRequest();
       

@@ -215,10 +215,13 @@ class LocalFallbackCollection:
     async def update_one(self, query: Dict[str, Any], update: Dict[str, Any]) -> None:
         docs = self._read_docs()
         set_fields = update.get("$set", {})
+        inc_fields = update.get("$inc", {})
         for d in docs:
             if self._matches(d, query):
                 for k, v in set_fields.items():
                     d[k] = v
+                for k, v in inc_fields.items():
+                    d[k] = d.get(k, 0) + v
                 break
         self._write_docs(docs)
 

@@ -126,9 +126,18 @@ def preview(dataset_id: str, limit: int, parquet_path: Optional[str] = None) -> 
     conn = get_conn()
     view = view_name(dataset_id)
     result = conn.execute(f'SELECT * FROM "{view}" LIMIT {int(limit)}')
-    table = result.to_arrow_table()
-    columns = list(table.schema.names)
-    rows = [{k: _jsonable(v) for k, v in row.items()} for row in table.to_pylist()]
+    if hasattr(result, "arrow"):
+        table = result.arrow()
+        columns = list(table.schema.names)
+        rows = [{k: _jsonable(v) for k, v in row.items()} for row in table.to_pylist()]
+    elif hasattr(result, "fetch_arrow_table"):
+        table = result.fetch_arrow_table()
+        columns = list(table.schema.names)
+        rows = [{k: _jsonable(v) for k, v in row.items()} for row in table.to_pylist()]
+    else:
+        df = result.df()
+        columns = list(df.columns)
+        rows = [{k: _jsonable(v) for k, v in row.items()} for row in df.to_dict(orient="records")]
     return {"columns": columns, "rows": rows, "row_count_returned": len(rows)}
 
 

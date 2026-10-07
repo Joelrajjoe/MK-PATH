@@ -34,12 +34,15 @@ async def get_dataset(dataset_id: str) -> Optional[Dict[str, Any]]:
     return await coll.find_one({"dataset_id": dataset_id}, {"_id": 0})
 
 
-async def list_datasets(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+async def list_datasets(
+    limit: int = 50, offset: int = 0, project_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
     coll = db_manager.get_collection("datasets")
     if coll is None:
         raise MetadataUnavailable("Metadata store unavailable.")
+    query = {"project_id": project_id} if project_id else {}
     cursor = (
-        coll.find({}, {"_id": 0})
+        coll.find(query, {"_id": 0})
         .sort("created_at", -1)
         .skip(offset)
         .limit(limit)
@@ -47,11 +50,12 @@ async def list_datasets(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]
     return [doc async for doc in cursor]
 
 
-async def count_datasets() -> int:
+async def count_datasets(project_id: Optional[str] = None) -> int:
     coll = db_manager.get_collection("datasets")
     if coll is None:
         raise MetadataUnavailable("Metadata store unavailable.")
-    return await coll.count_documents({})
+    query = {"project_id": project_id} if project_id else {}
+    return await coll.count_documents(query)
 
 
 async def update_dataset(dataset_id: str, update: Dict[str, Any]) -> None:
