@@ -214,6 +214,12 @@ export const api = {
     }
   },
   runs: {
+    list: async (projectId?: string): Promise<any[]> => {
+      const url = projectId ? `${API_BASE}/runs?project_id=${projectId}` : `${API_BASE}/runs`;
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      return await res.json();
+    },
     execute: async (projectId: string, datasetId: string, businessGoal?: string): Promise<any> => {
       const res = await fetch(`${API_BASE}/runs/execute`, {
         method: 'POST',

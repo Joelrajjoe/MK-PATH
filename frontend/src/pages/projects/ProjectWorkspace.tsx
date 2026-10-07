@@ -1,5 +1,6 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import ProjectOverview from './ProjectOverview'
 import DataUpload from './data/DataUpload'
 import DatasetExplorer from './data/DatasetExplorer'
 import KnowledgeUI from './knowledge/KnowledgeUI'
@@ -46,9 +47,10 @@ export default function ProjectWorkspace() {
 
         <div className="flex-1 mt-4">
           <TabsContent value="overview" className="h-full">
-            <div className="rounded-md border border-dashed p-8 text-center text-muted-foreground">
-              Project Overview Content
-            </div>
+            <ProjectOverview
+              projectId={projectId!}
+              onNavigateTab={(tab) => navigate(`/projects/${projectId}/${tab}`)}
+            />
           </TabsContent>
 
           <TabsContent value="data" className="h-full">

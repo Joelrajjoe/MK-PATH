@@ -132,16 +132,36 @@ def generate_plan(
         if col.lower() in goal_lower and col not in selected_dimensions:
             selected_dimensions.append(col)
 
+    # Prioritize explicit "based on <dim>" or "by <dim>" (e.g. "based on region", "based on regionand")
+    for dim_candidate in ["region", "segment", "segement", "category", "sub-category", "ship mode", "state", "city"]:
+        if (f"based on {dim_candidate}" in goal_lower or 
+            f"based on {dim_candidate}and" in goal_lower or 
+            f"by {dim_candidate}" in goal_lower):
+            dim_proper = dimension_aliases.get(dim_candidate, dim_candidate.title())
+            if dim_proper in selected_dimensions:
+                selected_dimensions.remove(dim_proper)
+            selected_dimensions.insert(0, dim_proper)
+
     if not selected_dimensions:
         usable_dims = [c for c in cat_cols if not any(id_word in c.lower() for id_word in ["id", "date"])]
         selected_dimensions = usable_dims[:2] if usable_dims else cat_cols[:1]
 
-    # 3. Detect filters (e.g., "furniture", "technology", "office supplies")
+    # 3. Detect filters (e.g., "furniture", "technology", "office supplies", "consumer", etc.)
     detected_filters = []
     category_keywords = {
         "furniture": ("Category", "Furniture"),
         "technology": ("Category", "Technology"),
         "office supplies": ("Category", "Office Supplies"),
+        "office supply": ("Category", "Office Supplies"),
+        "officesupplies": ("Category", "Office Supplies"),
+        "consumer": ("Segment", "Consumer"),
+        "corporate": ("Segment", "Corporate"),
+        "home office": ("Segment", "Home Office"),
+        "homeoffice": ("Segment", "Home Office"),
+        "west": ("Region", "West"),
+        "east": ("Region", "East"),
+        "central": ("Region", "Central"),
+        "south": ("Region", "South"),
     }
     for kw, (f_col, f_val) in category_keywords.items():
         if kw in goal_lower:
@@ -157,6 +177,7 @@ def generate_plan(
         time_dim = time_col
     else:
         time_dim = None
+
 
     objective = f"Analyze {business_goal or 'dataset metrics & segment distributions'}"
 

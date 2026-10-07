@@ -66,6 +66,20 @@ async def execute_run(req: ExecuteRunRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Run execution failed: {type(exc).__name__}: {exc}")
 
 
+@router.get("")
+async def list_runs(
+    project_id: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200)
+) -> List[Dict[str, Any]]:
+    _require_db()
+    coll = db_manager.get_collection("runs")
+    if coll is None:
+        raise HTTPException(status_code=503, detail="Database not ready.")
+    query = {"project_id": project_id} if project_id else {}
+    cursor = coll.find(query, {"_id": 0}).sort("created_at", -1).limit(limit)
+    return [doc async for doc in cursor]
+
+
 @router.get("/{run_id}")
 async def get_run(run_id: str) -> Dict[str, Any]:
     _require_db()
