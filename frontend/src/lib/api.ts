@@ -249,7 +249,10 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dataset_id: datasetId, business_goal: businessGoal }),
       });
-      if (!res.ok) throw new Error('Failed to generate analysis plan');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || err.message || 'Failed to generate analysis plan');
+      }
       return await res.json();
     },
     execute: async (datasetId: string, plan: any): Promise<any> => {
@@ -258,7 +261,10 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dataset_id: datasetId, plan }),
       });
-      if (!res.ok) throw new Error('Failed to execute analysis plan');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || err.message || 'Failed to execute analysis plan');
+      }
       return await res.json();
     }
   },
