@@ -242,14 +242,18 @@ async def node_ml_engineer(state: MKPathState) -> Dict[str, Any]:
         verif_results = {"deployment_status": "BLOCKED"}
 
     model_info = state.get("selected_model", {})
-    schema = state.get("schema", {})
+    model_features = model_info.get("feature_names", [])
 
     feature_schema = {}
     if isinstance(schema, list):
         for col in schema:
-            feature_schema[col.get("name")] = col.get("type", "float")
+            c_name = col.get("name")
+            if not model_features or c_name in model_features:
+                feature_schema[c_name] = col.get("type", "float")
     elif isinstance(schema, dict):
-        feature_schema = schema
+        for k, v in schema.items():
+            if not model_features or k in model_features:
+                feature_schema[k] = v
 
     artifact_meta = ml_engineer.generate_deployment_artifacts(
         project_id, run_id, verif_results, model_info, feature_schema

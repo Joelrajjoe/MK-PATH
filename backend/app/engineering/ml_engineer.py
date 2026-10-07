@@ -37,15 +37,23 @@ def validate_artifact(artifact_dir: Path, feature_schema: Dict[str, str]) -> Dic
     except Exception as exc:
         return {"status": "FAILED", "reason": f"Model failed to deserialize: {type(exc).__name__}: {exc}"}
 
+    # Determine exact expected features from model
+    expected_features = getattr(model, "feature_names_in_", None)
+    if expected_features is not None:
+        feature_names_to_test = list(expected_features)
+    else:
+        feature_names_to_test = list(feature_schema.keys())
+
     # Construct test record
     test_record = {}
-    for f_name, f_type in feature_schema.items():
+    for f_name in feature_names_to_test:
+        f_type = feature_schema.get(f_name, "float")
         if f_type in ["int", "integer"]:
             test_record[f_name] = 1
         elif f_type in ["float", "double", "number"]:
             test_record[f_name] = 1.0
         else:
-            test_record[f_name] = "0"
+            test_record[f_name] = 0.0
 
     if not test_record:
         test_record = {"feature_1": 1.0}
@@ -115,7 +123,9 @@ def generate_deployment_artifacts(
     shutil.copy(model_path_src, model_dir / "model.pkl")
 
     api_dir = artifact_dir / "api"
-    api_dir.mkdir(exist_ok=True)
+    model_features = model_info.get("feature_names", [])
+    if model_features:
+        feature_schema = {k: v for k, v in feature_schema.items() if k in model_features}
 
     # Generate schema.py based on feature_schema
     fields = []

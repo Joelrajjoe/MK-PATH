@@ -260,10 +260,10 @@ class MultiProvider:
 
     def __init__(self):
         self.providers: List[Any] = []
-        if getattr(settings, "GEMINI_API_KEY", ""):
-            self.providers.append(GeminiProvider(settings.GEMINI_API_KEY))
         if getattr(settings, "GROQ_API_KEY", ""):
             self.providers.append(GroqProvider(settings.GROQ_API_KEY))
+        if getattr(settings, "GEMINI_API_KEY", ""):
+            self.providers.append(GeminiProvider(settings.GEMINI_API_KEY))
         if not self.providers:
             self.providers.append(NullProvider())
 
