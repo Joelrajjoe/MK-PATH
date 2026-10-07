@@ -72,7 +72,12 @@ async def execute_analysis_plan(req: AnalysisExecuteRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Dataset not found.")
 
     table_name = ds_doc.get("table_name", "dataset")
-    results = analyst.execute_plan(req.plan, {"dataset_id": req.dataset_id, "table_name": table_name})
+    normalized_path = ds_doc.get("normalized_path")
+    results = analyst.execute_plan(req.plan, {
+        "dataset_id": req.dataset_id,
+        "table_name": table_name,
+        "normalized_path": normalized_path
+    })
     return {"dataset_id": req.dataset_id, "results": results}
 
 
@@ -84,6 +89,7 @@ async def run_tournament(req: TournamentRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Dataset not found.")
 
     try:
+        registry.ensure_view(req.dataset_id, ds_doc.get("normalized_path"))
         conn = registry.get_conn()
         v_name = registry.view_name(req.dataset_id)
         df = conn.execute(f'SELECT * FROM "{v_name}"').df()
@@ -114,6 +120,7 @@ async def apply_data_healing(req: HealingApplyRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Dataset not found.")
 
     try:
+        registry.ensure_view(req.dataset_id, ds_doc.get("normalized_path"))
         conn = registry.get_conn()
         v_name = registry.view_name(req.dataset_id)
         df = conn.execute(f'SELECT * FROM "{v_name}"').df()

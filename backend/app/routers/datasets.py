@@ -295,13 +295,13 @@ async def preview_dataset(
             detail={"code": "NOT_INGESTED", "message": "Dataset failed ingestion."},
         )
     try:
-        data = await run_in_threadpool(registry.preview, dataset_id, limit)
+        data = await run_in_threadpool(registry.preview, dataset_id, limit, doc.get("normalized_path"))
     except Exception as exc:
         raise HTTPException(
             status_code=409,
             detail={
                 "code": "REGISTRATION_UNAVAILABLE",
-                "message": f"Preview unavailable: {type(exc).__name__}",
+                "message": f"Preview unavailable: {type(exc).__name__}: {exc}",
             },
         )
     return {
@@ -316,6 +316,14 @@ async def preview_dataset(
 async def get_dataset_quality(dataset_id: str) -> Dict[str, Any]:
     doc = await _get_or_404(dataset_id)
     profile = doc.get("profile")
+    if not profile and doc.get("ingestion_status") == "completed":
+        try:
+            report = await run_in_threadpool(build_quality_report, doc)
+            profile = profile_summary(report)
+            await repo.update_dataset(dataset_id, {"profile": profile})
+        except Exception as exc:
+            logger.warning(f"On-the-fly profiling failed for {dataset_id}: {exc}")
+
     if not profile:
         raise HTTPException(
             status_code=404,

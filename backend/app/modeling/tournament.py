@@ -4,6 +4,7 @@ import os
 import pickle
 import time
 from typing import Any, Dict, List, Optional
+import numpy as np
 import pandas as pd
 from ..config import settings
 
@@ -142,7 +143,7 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
         from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
         models = {
             "Linear Regression": LinearRegression(),
-            "Random Forest Regressor": RandomForestRegressor(n_estimators=100, random_state=42)
+            "Random Forest Regressor": RandomForestRegressor(n_estimators=50, max_depth=12, n_jobs=-1, random_state=42)
         }
         try:
             import lightgbm as lgb
@@ -152,7 +153,7 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
     else:
         models = {
             "Logistic Regression": LogisticRegression(max_iter=1000),
-            "Random Forest": RandomForestClassifier(n_estimators=100, random_state=42)
+            "Random Forest": RandomForestClassifier(n_estimators=50, max_depth=12, n_jobs=-1, random_state=42)
         }
         try:
             import lightgbm as lgb

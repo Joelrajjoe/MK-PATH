@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -94,6 +94,18 @@ export default function AgentExecutionCenter() {
         <Card className="border-red-500/50 bg-red-500/5 p-4 text-red-600 font-medium">
           <AlertTriangle className="h-5 w-5 inline mr-2" />
           {error}
+        </Card>
+      )}
+
+      {runData && runData.status === 'PAUSED_FOR_INPUT' && (
+        <Card className="border-amber-500/50 bg-amber-500/10 p-4 text-amber-800 dark:text-amber-300 font-medium flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5" />
+            <span>Workflow Paused: Semantic ambiguity detected. A human decision is required.</span>
+          </div>
+          <Button size="sm" variant="outline" asChild>
+            <Link to={`/projects/${projectId}/knowledge`}>Resolve Ambiguity</Link>
+          </Button>
         </Card>
       )}
 

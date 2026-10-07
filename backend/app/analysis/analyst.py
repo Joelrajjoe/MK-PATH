@@ -83,17 +83,14 @@ def execute_plan(plan: Any, dataset: Dict[str, Any]) -> Dict[str, Any]:
     else:
         plan_obj = plan
 
-    dataset_id = dataset["dataset_id"]
+    dataset_id = dataset.get("dataset_id")
+    if not dataset_id:
+        raise ValueError("dataset_id is required for execute_plan")
+
     from ..ingestion import registry
+    registry.ensure_view(dataset_id, dataset.get("normalized_path"))
     conn = registry.get_conn()
     v_name = registry.view_name(dataset_id)
-
-    # Ensure view exists
-    try:
-        conn.execute(f'SELECT 1 FROM "{v_name}" LIMIT 1')
-    except Exception:
-        parquet_path = str(settings.DATASETS_DIR / f"{dataset_id}.parquet")
-        registry.register(dataset_id, parquet_path)
 
     report = {
         "objective": plan_obj.objective,
