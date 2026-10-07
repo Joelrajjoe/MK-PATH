@@ -31,7 +31,7 @@ async def node_ingest(state: MKPathState) -> Dict[str, Any]:
         if ds_list:
             dataset_id = ds_list[0].get("dataset_id", "")
 
-    await record_audit("INGEST_START", project_id=project_id, dataset_id=dataset_id, status="running")
+    await record_audit("INGEST_START", project_id=project_id, dataset_id=dataset_id, run_id=state.get("run_id"), status="running")
 
     if not dataset_id:
         return {"status": "FAILED", "errors": ["No dataset_id provided in state."]}
@@ -52,7 +52,7 @@ async def node_profile(state: MKPathState) -> Dict[str, Any]:
     logger.info("Running PROFILE")
     project_id = state.get("project_id", "")
     dataset_id = state.get("dataset_id") or (state.get("dataset_ids", [""])[0] if state.get("dataset_ids") else "")
-    await record_audit("PROFILE_START", project_id=project_id, dataset_id=dataset_id, status="running")
+    await record_audit("PROFILE_START", project_id=project_id, dataset_id=dataset_id, run_id=state.get("run_id"), status="running")
 
     dataset_doc = await get_dataset(dataset_id)
     if not dataset_doc:
@@ -76,7 +76,7 @@ async def node_semantic_analysis(state: MKPathState) -> Dict[str, Any]:
     dataset_id = state.get("dataset_id") or (state.get("dataset_ids", [""])[0] if state.get("dataset_ids") else "")
     business_goal = state.get("business_goal", "")
 
-    await record_audit("SEMANTIC_ANALYSIS", project_id=project_id, dataset_id=dataset_id, status="running")
+    await record_audit("SEMANTIC_ANALYSIS", project_id=project_id, dataset_id=dataset_id, run_id=state.get("run_id"), status="running")
 
     dataset_doc = await get_dataset(dataset_id)
     ctx = await semantic_service.get_latest_context(dataset_id)
@@ -111,15 +111,15 @@ def check_ambiguity(state: MKPathState) -> str:
 async def node_human_breakpoint(state: MKPathState) -> Dict[str, Any]:
     logger.info("Running HUMAN_BREAKPOINT")
     dataset_id = state.get("dataset_id") or (state.get("dataset_ids", [""])[0] if state.get("dataset_ids") else "")
-    await record_audit("HUMAN_BREAKPOINT", project_id=state.get("project_id"), dataset_id=dataset_id, status="paused")
+    await record_audit("HUMAN_BREAKPOINT", project_id=state.get("project_id"), dataset_id=dataset_id, run_id=state.get("run_id"), status="paused")
     return {"dataset_id": dataset_id, "status": "PAUSED_FOR_INPUT"}
 
 
 async def node_analysis_planning(state: MKPathState) -> Dict[str, Any]:
     logger.info("Running ANALYSIS_PLANNING")
-    await record_audit("ANALYSIS_PLANNING", project_id=state.get("project_id"), status="running")
-
     dataset_id = state.get("dataset_id") or (state.get("dataset_ids", [""])[0] if state.get("dataset_ids") else "")
+    await record_audit("ANALYSIS_PLANNING", project_id=state.get("project_id"), dataset_id=dataset_id, run_id=state.get("run_id"), status="running")
+
     bg = state.get("business_goal", "")
     schema = state.get("schema", {})
     profile = state.get("profile", {})
@@ -136,7 +136,7 @@ async def node_data_analyst(state: MKPathState) -> Dict[str, Any]:
     table_name = dataset_doc.get("table_name", "dataset") if dataset_doc else "dataset"
     normalized_path = dataset_doc.get("normalized_path") if dataset_doc else None
 
-    await record_audit("DATA_ANALYST_START", project_id=state.get("project_id"), dataset_id=dataset_id, status="running")
+    await record_audit("DATA_ANALYST_START", project_id=state.get("project_id"), dataset_id=dataset_id, run_id=state.get("run_id"), status="running")
 
     plan = state.get("analysis_plan", {})
     results = analyst.execute_plan(plan, {
@@ -160,7 +160,7 @@ async def node_verification(state: MKPathState) -> Dict[str, Any]:
     run_id = state.get("run_id", "run_1")
     dataset_id = state.get("dataset_id") or (state.get("dataset_ids", [""])[0] if state.get("dataset_ids") else "")
 
-    await record_audit("VERIFICATION_START", project_id=project_id, dataset_id=dataset_id, status="running")
+    await record_audit("VERIFICATION_START", project_id=project_id, dataset_id=dataset_id, run_id=run_id, status="running")
 
     profile = state.get("profile", {})
     report = run_verification_gates(project_id, run_id, {
@@ -268,7 +268,7 @@ async def node_artifact_generation(state: MKPathState) -> Dict[str, Any]:
 
 async def node_audit(state: MKPathState) -> Dict[str, Any]:
     logger.info("Running AUDIT")
-    await record_audit("WORKFLOW_COMPLETED", project_id=state.get("project_id"), status="ok")
+    await record_audit("WORKFLOW_COMPLETED", project_id=state.get("project_id"), dataset_id=state.get("dataset_id"), run_id=state.get("run_id"), status="ok")
     return {"status": "COMPLETED"}
 
 

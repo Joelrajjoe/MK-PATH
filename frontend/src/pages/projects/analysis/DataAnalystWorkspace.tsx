@@ -148,19 +148,110 @@ export default function DataAnalystWorkspace() {
                   <CardTitle>Execution Results & Provenance</CardTitle>
                   <CardDescription>Computed deterministically via DuckDB</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="p-4 border rounded bg-muted/20">
-                    <span className="text-xs font-semibold text-muted-foreground uppercase block mb-2">Executive Summary</span>
-                    <p className="text-sm font-medium">{results.summary || 'Analysis executed successfully.'}</p>
+                <CardContent className="space-y-6">
+                  {/* Executive Summary */}
+                  <div className="p-4 border rounded-lg bg-primary/5 border-primary/20">
+                    <span className="text-xs font-semibold text-primary uppercase tracking-wider block mb-1">Executive Summary</span>
+                    <p className="text-sm font-medium text-foreground leading-relaxed">
+                      {results.summary || results.executive_summary || 'Analysis executed successfully.'}
+                    </p>
                   </div>
-                  <div>
-                    <span className="text-xs font-semibold text-muted-foreground uppercase block mb-2">Raw Metrics Output</span>
-                    <pre className="bg-muted p-4 rounded text-xs font-mono max-h-64 overflow-auto">
+
+                  {/* Filtered Results Highlight */}
+                  {results.filtered_results && results.filtered_results.length > 0 && (
+                    <div className="space-y-2">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">Filtered Findings</span>
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        {results.filtered_results.map((fr: any, idx: number) => (
+                          <div key={idx} className="p-4 border rounded-lg bg-emerald-500/5 border-emerald-500/20">
+                            <span className="text-xs font-semibold text-emerald-600 block">{fr.filter}</span>
+                            <div className="mt-2 space-y-1">
+                              {Object.entries(fr.results || {}).map(([k, v]: [string, any]) => (
+                                <div key={k} className="flex justify-between text-xs">
+                                  <span className="capitalize text-muted-foreground">{k.replace(/_/g, ' ')}:</span>
+                                  <span className="font-semibold">{typeof v === 'number' ? v.toLocaleString() : String(v)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Segment Breakdown Table */}
+                  {results.segments && Object.keys(results.segments).length > 0 && (
+                    <div className="space-y-2">
+                      {Object.entries(results.segments).map(([segTitle, rows]: [string, any]) => (
+                        <div key={segTitle} className="border rounded-lg overflow-hidden">
+                          <div className="bg-muted px-4 py-2 border-b text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                            {segTitle.replace(/_/g, ' ')}
+                          </div>
+                          {Array.isArray(rows) && rows.length > 0 ? (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-xs text-left">
+                                <thead className="bg-muted/40 border-b">
+                                  <tr>
+                                    {Object.keys(rows[0]).map((h) => (
+                                      <th key={h} className="p-2.5 font-semibold capitalize">
+                                        {h.replace(/_/g, ' ')}
+                                      </th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {rows.map((row: any, rIdx: number) => (
+                                    <tr key={rIdx} className="border-b last:border-0 hover:bg-muted/20">
+                                      {Object.values(row).map((val: any, cIdx: number) => (
+                                        <td key={cIdx} className="p-2.5 font-medium">
+                                          {typeof val === 'number' ? val.toLocaleString() : String(val)}
+                                        </td>
+                                      ))}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <p className="p-4 text-xs text-muted-foreground">No segment records available.</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Overall KPIs */}
+                  {results.kpis && Object.keys(results.kpis).length > 0 && (
+                    <div className="space-y-2">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">Target Metrics</span>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {Object.entries(results.kpis).map(([metricName, stats]: [string, any]) => (
+                          <div key={metricName} className="p-3 border rounded-lg bg-card">
+                            <span className="text-xs text-muted-foreground block truncate">{metricName}</span>
+                            <span className="text-base font-bold text-foreground block mt-0.5">
+                              {stats?.sum_val !== undefined && stats?.sum_val !== null
+                                ? Number(stats.sum_val).toLocaleString(undefined, { maximumFractionDigits: 2 })
+                                : 'N/A'}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground block mt-0.5">
+                              Avg: {stats?.avg_val !== undefined && stats?.avg_val !== null ? Number(stats.avg_val).toFixed(2) : '-'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Collapsible Raw Output */}
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer font-semibold py-1">View Raw Execution JSON & Provenance</summary>
+                    <pre className="bg-muted p-4 rounded text-[11px] font-mono max-h-56 overflow-auto mt-2">
                       {JSON.stringify(results, null, 2)}
                     </pre>
-                  </div>
+                  </details>
                 </CardContent>
               </Card>
+
             )}
           </div>
         </div>
