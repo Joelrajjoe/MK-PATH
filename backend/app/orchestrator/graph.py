@@ -244,6 +244,7 @@ async def node_ml_engineer(state: MKPathState) -> Dict[str, Any]:
     model_info = state.get("selected_model", {})
     model_features = model_info.get("feature_names", [])
 
+    schema = state.get("schema", {})
     feature_schema = {}
     if isinstance(schema, list):
         for col in schema:

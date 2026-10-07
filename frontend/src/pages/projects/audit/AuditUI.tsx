@@ -18,19 +18,40 @@ export default function AuditUI() {
       .finally(() => setLoading(false))
   }, [projectId])
 
-  const getIcon = (action: string) => {
-    if (action.includes('DATASET') || action.includes('UPLOAD')) return <Database className="h-4 w-4" />
-    if (action.includes('AGENT') || action.includes('ANALYSIS')) return <Bot className="h-4 w-4" />
-    if (action.includes('VERIFICATION')) return <ShieldCheck className="h-4 w-4" />
-    if (action.includes('ARTIFACT')) return <FileText className="h-4 w-4" />
-    return <Clock className="h-4 w-4" />
+  const getIcon = (action?: string) => {
+    const act = (action || '').toUpperCase()
+    if (act.includes('DATASET') || act.includes('UPLOAD') || act.includes('INGEST') || act.includes('PROFILE')) return <Database className="h-4 w-4 text-sky-500" />
+    if (act.includes('AGENT') || act.includes('ANALYSIS') || act.includes('ANALYST') || act.includes('SCIENTIST')) return <Bot className="h-4 w-4 text-purple-500" />
+    if (act.includes('VERIFICATION') || act.includes('TOURNAMENT') || act.includes('GATE')) return <ShieldCheck className="h-4 w-4 text-emerald-500" />
+    if (act.includes('ARTIFACT') || act.includes('MODEL') || act.includes('HEALING') || act.includes('COMPLETED')) return <FileText className="h-4 w-4 text-amber-500" />
+    return <Clock className="h-4 w-4 text-muted-foreground" />
+  }
+
+  const formatTime = (iso?: string) => {
+    if (!iso) return ''
+    try {
+      const d = new Date(iso)
+      return isNaN(d.getTime()) ? iso : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    } catch {
+      return iso
+    }
+  }
+
+  const formatDate = (iso?: string) => {
+    if (!iso) return ''
+    try {
+      const d = new Date(iso)
+      return isNaN(d.getTime()) ? '' : d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+    } catch {
+      return ''
+    }
   }
 
   return (
     <div className="space-y-6 max-w-5xl">
       <div>
         <h2 className="text-2xl font-bold tracking-tight">Audit Log</h2>
-        <p className="text-muted-foreground">Chronological, immutable audit events recorded in MongoDB Atlas.</p>
+        <p className="text-muted-foreground">Chronological, immutable audit events recorded in database store.</p>
       </div>
 
       {loading ? (
@@ -45,47 +66,64 @@ export default function AuditUI() {
         <Card>
           <CardContent className="p-0">
             <div className="divide-y">
-              {events.map((e: any, i: number) => (
-                <div key={i} className="flex gap-4 p-4 hover:bg-muted/30 transition-colors items-start">
-                  <div className="flex flex-col items-center gap-1 w-24 pt-1">
-                    <span className="text-[10px] font-mono text-muted-foreground">{e.timestamp?.split('T')[1]?.slice(0, 8) || e.timestamp}</span>
-                  </div>
-                  
-                  <div className="mt-1 bg-muted/50 p-2 rounded-full border text-muted-foreground">
-                    {getIcon(e.action)}
-                  </div>
+              {events.map((e: any, i: number) => {
+                const eventName = e.action || e.event_type || 'EVENT'
+                const timestamp = e.created_at || e.timestamp
+                const isSuccess = e.status === 'ok' || e.status === 'COMPLETED'
+                const isError = e.status === 'error' || e.status === 'FAILED'
 
-                  <div className="flex-1 pt-1">
-                    <div className="flex items-center justify-between">
-                      <p className="font-bold tracking-wide text-sm">{e.action}</p>
-                      <Badge variant={e.status === 'error' || e.status === 'FAILED' ? 'destructive' : 'secondary'} className="text-[10px] uppercase">
-                        {e.status}
-                      </Badge>
+                return (
+                  <div key={i} className="flex gap-4 p-4 hover:bg-muted/30 transition-colors items-start">
+                    <div className="flex flex-col items-center gap-0.5 w-24 pt-1 text-right">
+                      <span className="text-[11px] font-mono font-semibold text-foreground">{formatTime(timestamp)}</span>
+                      <span className="text-[9px] text-muted-foreground">{formatDate(timestamp)}</span>
                     </div>
                     
-                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mt-2 text-xs">
-                      {e.project_id && (
-                        <div>
-                          <span className="text-muted-foreground uppercase font-semibold block">Project</span>
-                          <span className="font-mono text-xs">{e.project_id}</span>
-                        </div>
-                      )}
-                      {e.dataset_id && (
-                        <div>
-                          <span className="text-muted-foreground uppercase font-semibold block">Dataset</span>
-                          <span className="font-mono text-xs">{e.dataset_id}</span>
-                        </div>
-                      )}
-                      {e.details && (
-                        <div>
-                          <span className="text-muted-foreground uppercase font-semibold block">Details</span>
-                          <span className="text-muted-foreground font-mono truncate block">{JSON.stringify(e.details)}</span>
-                        </div>
-                      )}
+                    <div className="mt-1 bg-muted/60 p-2 rounded-full border">
+                      {getIcon(eventName)}
+                    </div>
+
+                    <div className="flex-1 pt-1">
+                      <div className="flex items-center justify-between">
+                        <p className="font-bold tracking-wide text-sm">{eventName}</p>
+                        <Badge
+                          variant={isError ? 'destructive' : isSuccess ? 'outline' : 'secondary'}
+                          className={`text-[10px] uppercase font-mono ${isSuccess ? 'border-emerald-500 text-emerald-600 bg-emerald-500/10' : ''}`}
+                        >
+                          {e.status}
+                        </Badge>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-2 text-xs">
+                        {e.project_id && (
+                          <div>
+                            <span className="text-muted-foreground uppercase font-semibold text-[10px] block">Project</span>
+                            <span className="font-mono text-xs">{e.project_id.slice(0, 8)}...</span>
+                          </div>
+                        )}
+                        {e.run_id && (
+                          <div>
+                            <span className="text-muted-foreground uppercase font-semibold text-[10px] block">Run ID</span>
+                            <span className="font-mono text-xs">{e.run_id.slice(0, 8)}...</span>
+                          </div>
+                        )}
+                        {e.dataset_id && (
+                          <div>
+                            <span className="text-muted-foreground uppercase font-semibold text-[10px] block">Dataset</span>
+                            <span className="font-mono text-xs">{e.dataset_id.slice(0, 8)}...</span>
+                          </div>
+                        )}
+                        {e.details && (
+                          <div className="col-span-2">
+                            <span className="text-muted-foreground uppercase font-semibold text-[10px] block">Details</span>
+                            <span className="text-muted-foreground font-mono text-[11px] truncate block max-w-md">{JSON.stringify(e.details)}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </CardContent>
         </Card>

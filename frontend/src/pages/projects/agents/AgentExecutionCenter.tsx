@@ -162,10 +162,15 @@ export default function AgentExecutionCenter() {
                       {auditEvents.map((ev, i) => (
                         <div key={i} className="p-3 border rounded text-xs bg-muted/20 font-mono">
                           <div className="flex justify-between font-bold text-foreground">
-                            <span>&gt; {ev.action}</span>
-                            <span className="text-muted-foreground">{ev.timestamp}</span>
+                            <span className="text-primary">&gt; {ev.event_type || ev.action || 'EVENT'}</span>
+                            <span className="text-muted-foreground font-normal">
+                              {ev.created_at ? new Date(ev.created_at).toLocaleTimeString() : (ev.timestamp || '')}
+                            </span>
                           </div>
-                          <div className="text-muted-foreground mt-1">Status: {ev.status}</div>
+                          <div className="text-muted-foreground mt-1 flex items-center gap-2">
+                            <span>Status: <strong className={ev.status === 'ok' ? 'text-emerald-500' : 'text-foreground'}>{ev.status}</strong></span>
+                            {ev.dataset_id && <span>| Dataset: {ev.dataset_id.slice(0, 8)}...</span>}
+                          </div>
                         </div>
                       ))}
                     </div>

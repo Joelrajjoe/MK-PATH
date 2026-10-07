@@ -306,6 +306,25 @@ export const api = {
       });
       if (!res.ok) throw new Error('Failed to apply data healing');
       return await res.json();
+    },
+    listEvents: async (datasetId?: string): Promise<any> => {
+      const url = datasetId ? `${API_BASE}/healing/events?dataset_id=${datasetId}` : `${API_BASE}/healing/events`;
+      const res = await fetch(url);
+      if (!res.ok) return { events: [] };
+      return await res.json();
+    }
+  },
+  artifacts: {
+    list: async (projectId?: string, runId?: string): Promise<any> => {
+      let url = `${API_BASE}/artifacts`;
+      const params = new URLSearchParams();
+      if (projectId) params.append('project_id', projectId);
+      if (runId) params.append('run_id', runId);
+      const qs = params.toString();
+      if (qs) url += `?${qs}`;
+      const res = await fetch(url);
+      if (!res.ok) return { artifacts: [] };
+      return await res.json();
     }
   },
   verification: {

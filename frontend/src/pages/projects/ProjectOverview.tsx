@@ -13,8 +13,7 @@ import {
   Upload,
   PlayCircle,
   FileCheck2,
-  CheckCircle2,
-  AlertCircle
+  CheckCircle2
 } from 'lucide-react'
 import { api, type Project, type Dataset } from '@/lib/api'
 

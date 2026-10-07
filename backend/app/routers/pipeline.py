@@ -129,7 +129,48 @@ async def apply_data_healing(req: HealingApplyRequest) -> Dict[str, Any]:
 
     plan_obj = healing_engine.TransformationPlan(**req.plan)
     event = healing_engine.apply_healing(df, plan_obj, req.dataset_id)
-    return event.model_dump()
+    event_dict = event.model_dump()
+    event_dict["dataset_id"] = req.dataset_id
+    event_dict["project_id"] = ds_doc.get("project_id")
+
+    from ..audit import record_audit
+    await record_audit(
+        "HEALING_APPLIED",
+        project_id=ds_doc.get("project_id"),
+        dataset_id=req.dataset_id,
+        details={
+            "derived_dataset_id": event_dict.get("derived_dataset_id"),
+            "derived_path": event_dict.get("derived_path"),
+            "improvements": event_dict.get("quality_report", {}).get("improvements", [])
+        },
+        status="ok"
+    )
+
+    coll = db_manager.get_collection("healing_events")
+    if coll is not None:
+        try:
+            await coll.insert_one(dict(event_dict))
+        except Exception:
+            pass
+
+    return event_dict
+
+
+@router.get("/healing/events")
+async def list_healing_events(
+    dataset_id: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=100)
+) -> Dict[str, Any]:
+    _require_db()
+    coll = db_manager.get_collection("healing_events")
+    if coll is None:
+        return {"events": []}
+    query: Dict[str, Any] = {}
+    if dataset_id:
+        query["dataset_id"] = dataset_id
+    cursor = coll.find(query, {"_id": 0}).sort("timestamp", -1).limit(limit)
+    events = [doc async for doc in cursor]
+    return {"events": events}
 
 
 @router.get("/verification/gates")
@@ -143,6 +184,35 @@ async def get_verification_gates(
         "temporal_leakage_risk": "LOW"
     })
     return report.model_dump()
+
+
+@router.get("/artifacts")
+async def list_artifacts(
+    project_id: Optional[str] = Query(None),
+    run_id: Optional[str] = Query(None)
+) -> Dict[str, Any]:
+    _require_db()
+    coll = db_manager.get_collection("runs")
+    if coll is None:
+        raise HTTPException(status_code=503, detail="Database not ready.")
+    query: Dict[str, Any] = {}
+    if project_id:
+        query["project_id"] = project_id
+    if run_id:
+        query["run_id"] = run_id
+
+    cursor = coll.find(query, {"_id": 0}).sort("created_at", -1)
+    artifacts = []
+    async for doc in cursor:
+        run_arts = doc.get("artifacts") or []
+        for a in run_arts:
+            if isinstance(a, dict):
+                art_entry = dict(a)
+                art_entry["project_id"] = doc.get("project_id")
+                art_entry["run_id"] = a.get("run_id") or doc.get("run_id")
+                art_entry["created_at"] = doc.get("created_at")
+                artifacts.append(art_entry)
+    return {"artifacts": artifacts}
 
 
 @router.get("/audit")
@@ -167,7 +237,9 @@ async def list_audit_events(
     async for doc in cursor:
         if "created_at" in doc and hasattr(doc["created_at"], "isoformat"):
             doc["created_at"] = doc["created_at"].isoformat()
-        if "timestamp" not in doc:
+        if "action" not in doc:
+            doc["action"] = doc.get("event_type", "EVENT")
+        if "timestamp" not in doc or not doc["timestamp"]:
             doc["timestamp"] = doc.get("created_at")
         events.append(doc)
     return {"events": events, "total": len(events)}

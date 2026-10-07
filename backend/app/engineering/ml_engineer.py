@@ -10,6 +10,8 @@ from typing import Any, Dict
 
 import pandas as pd
 
+from ..config import settings
+
 logger = logging.getLogger("mkpath.engineering.ml_engineer")
 
 
@@ -61,6 +63,9 @@ def validate_artifact(artifact_dir: Path, feature_schema: Dict[str, str]) -> Dic
     # Test real inference
     try:
         test_df = pd.DataFrame([test_record])
+        for col in test_df.columns:
+            if test_df[col].dtype == object:
+                test_df[col] = pd.to_numeric(test_df[col], errors='coerce').fillna(0.0)
         pred = model.predict(test_df)[0]
         prob = None
         if hasattr(model, "predict_proba"):
@@ -92,7 +97,7 @@ def generate_deployment_artifacts(
     """
     ML Engineer Agent generates real FastAPI deployment artifacts from the verified trained model.
     """
-    artifact_dir = Path("E:/MK-PATH/artifacts") / project_id / run_id
+    artifact_dir = settings.ARTIFACTS_DIR / project_id / run_id
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
     if verification_report.get("deployment_status") != "READY":
@@ -123,6 +128,7 @@ def generate_deployment_artifacts(
     shutil.copy(model_path_src, model_dir / "model.pkl")
 
     api_dir = artifact_dir / "api"
+    api_dir.mkdir(parents=True, exist_ok=True)
     model_features = model_info.get("feature_names", [])
     if model_features:
         feature_schema = {k: v for k, v in feature_schema.items() if k in model_features}
@@ -206,6 +212,9 @@ def predict(req: InferenceRequest):
     
     try:
         df = pd.DataFrame([req.model_dump()])
+        for col in df.columns:
+            if df[col].dtype == object:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
         pred = model.predict(df)[0]
         prob = None
         if hasattr(model, "predict_proba"):
