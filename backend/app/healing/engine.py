@@ -166,21 +166,29 @@ def apply_healing(
     # 4. Handle numerical outliers via IQR winsorization/capping
     outlier_points_capped = 0
     outlier_cols_handled = []
-    numeric_cols = [c for c in derived_df.columns if pd.api.types.is_numeric_dtype(derived_df[c])]
+    numeric_cols = [
+        c for c in derived_df.columns 
+        if pd.api.types.is_numeric_dtype(derived_df[c]) and not pd.api.types.is_bool_dtype(derived_df[c])
+    ]
     for col in numeric_cols:
         if col in plan.columns_affected or not plan.columns_affected:
-            q25 = float(derived_df[col].quantile(0.25))
-            q75 = float(derived_df[col].quantile(0.75))
-            iqr = q75 - q25
-            if iqr > 0:
-                lower_bound = q25 - 3.0 * iqr
-                upper_bound = q75 + 3.0 * iqr
-                outliers_mask = (derived_df[col] < lower_bound) | (derived_df[col] > upper_bound)
-                cnt = int(outliers_mask.sum())
-                if cnt > 0:
-                    derived_df[col] = derived_df[col].clip(lower=lower_bound, upper=upper_bound)
-                    outlier_points_capped += cnt
-                    outlier_cols_handled.append(col)
+            try:
+                s = pd.to_numeric(derived_df[col], errors='coerce').dropna()
+                if len(s) > 1:
+                    q25 = float(s.quantile(0.25))
+                    q75 = float(s.quantile(0.75))
+                    iqr = q75 - q25
+                    if iqr > 0:
+                        lower_bound = q25 - 3.0 * iqr
+                        upper_bound = q75 + 3.0 * iqr
+                        outliers_mask = (derived_df[col] < lower_bound) | (derived_df[col] > upper_bound)
+                        cnt = int(outliers_mask.sum())
+                        if cnt > 0:
+                            derived_df[col] = derived_df[col].clip(lower=lower_bound, upper=upper_bound)
+                            outlier_points_capped += cnt
+                            outlier_cols_handled.append(col)
+            except Exception as e:
+                logger.warning(f"Skipping outlier capping on {col}: {e}")
     if outlier_points_capped > 0:
         improvements.append(f"Normalized {outlier_points_capped:,} extreme outlier(s) using robust IQR boundary capping across {len(outlier_cols_handled)} numerical column(s) ({', '.join(outlier_cols_handled[:4])}).")
 
@@ -189,8 +197,11 @@ def apply_healing(
     if before_nulls > 0:
         for col in derived_df.columns:
             if derived_df[col].isna().any():
-                if pd.api.types.is_numeric_dtype(derived_df[col]):
-                    derived_df[col] = derived_df[col].fillna(derived_df[col].median()).fillna(0)
+                if pd.api.types.is_bool_dtype(derived_df[col]):
+                    derived_df[col] = derived_df[col].fillna(False)
+                elif pd.api.types.is_numeric_dtype(derived_df[col]):
+                    med = derived_df[col].median()
+                    derived_df[col] = derived_df[col].fillna(med if pd.notnull(med) else 0)
                 else:
                     mode_val = derived_df[col].mode()
                     fill_val = mode_val[0] if len(mode_val) > 0 else "Unknown"

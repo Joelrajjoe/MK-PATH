@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ArrowLeft, Play, AlertCircle, CheckCircle, Loader2 } from 'lucide-react'
 import { api, type Dataset } from '@/lib/api'
 import DataVisualizer from '@/components/visualization/DataVisualizer'
+import ExecutivePerformanceDashboard from '@/components/visualization/ExecutivePerformanceDashboard'
 
 export default function DatasetExplorer({ datasetId: propDatasetId }: { datasetId?: string } = {}) {
   const { projectId } = useParams<{ projectId: string }>()
@@ -106,38 +107,55 @@ export default function DatasetExplorer({ datasetId: propDatasetId }: { datasetI
         </div>
       </div>
 
-      <Tabs defaultValue="overview" className="flex-1 flex flex-col">
-        <TabsList className="w-fit">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="schema">Schema</TabsTrigger>
+      <Tabs defaultValue="executive" className="flex-1 flex flex-col">
+        <TabsList className="w-fit flex-wrap">
+          <TabsTrigger value="executive">Executive Dashboard (Image-3)</TabsTrigger>
+          <TabsTrigger value="visualizations">Visualizations (18 Charts)</TabsTrigger>
           <TabsTrigger value="preview">Preview</TabsTrigger>
-          <TabsTrigger value="visualizations">Visualizations</TabsTrigger>
+          <TabsTrigger value="schema">Schema</TabsTrigger>
           <TabsTrigger value="quality">Quality</TabsTrigger>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
         </TabsList>
 
         <div className="mt-4">
+          <TabsContent value="executive">
+            <ExecutivePerformanceDashboard
+              data={previewData?.rows || []}
+              columns={schemaData?.columns?.map((c: any) => (typeof c === 'string' ? c : c.name)) || []}
+              datasetName={dataset.name || dataset.original_filename}
+            />
+          </TabsContent>
+
           <TabsContent value="overview">
-            <div className="grid gap-4 md:grid-cols-4">
-              <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Rows</CardTitle></CardHeader>
-                <CardContent><div className="text-2xl font-bold">{dataset.rowCount ?? dataset.row_count ?? 0}</div></CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Columns</CardTitle></CardHeader>
-                <CardContent><div className="text-2xl font-bold">{dataset.columnCount ?? dataset.column_count ?? 0}</div></CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Quality Score</CardTitle></CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-emerald-600">
-                    {dataset.qualityScore !== undefined ? `${dataset.qualityScore}/100` : 'Not Profiled'}
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Status</CardTitle></CardHeader>
-                <CardContent><div className="text-2xl font-bold uppercase">{dataset.status || 'COMPLETED'}</div></CardContent>
-              </Card>
+            <div className="space-y-6">
+              <div className="grid gap-4 md:grid-cols-4">
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Rows</CardTitle></CardHeader>
+                  <CardContent><div className="text-2xl font-bold">{dataset.rowCount ?? dataset.row_count ?? 0}</div></CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Columns</CardTitle></CardHeader>
+                  <CardContent><div className="text-2xl font-bold">{dataset.columnCount ?? dataset.column_count ?? 0}</div></CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Quality Score</CardTitle></CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-emerald-600">
+                      {dataset.qualityScore !== undefined ? `${dataset.qualityScore}/100` : 'Not Profiled'}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Status</CardTitle></CardHeader>
+                  <CardContent><div className="text-2xl font-bold uppercase">{dataset.status || 'COMPLETED'}</div></CardContent>
+                </Card>
+              </div>
+
+              <ExecutivePerformanceDashboard
+                data={previewData?.rows || []}
+                columns={schemaData?.columns?.map((c: any) => (typeof c === 'string' ? c : c.name)) || []}
+                datasetName={dataset.name || dataset.original_filename}
+              />
             </div>
           </TabsContent>
 

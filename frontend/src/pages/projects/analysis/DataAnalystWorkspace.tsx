@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import DataVisualizer from '@/components/visualization/DataVisualizer'
+import ExecutivePerformanceDashboard from '@/components/visualization/ExecutivePerformanceDashboard'
 
 interface AnalysisTemplate {
   id: string
@@ -310,6 +311,28 @@ export default function DataAnalystWorkspace() {
           </Button>
         </div>
       ) : null}
+
+      {/* Final Executive Performance Dashboard (The Trade Desk Architecture matching Image-3) */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BarChart className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-semibold tracking-tight uppercase text-muted-foreground">
+              Executive Performance Management Dashboard (Image-3 Layout)
+            </h3>
+          </div>
+          <span className="text-xs text-muted-foreground font-mono">
+            {isPreprocessed ? 'Preprocessed Derived Model' : 'Active Raw Dataset'}
+          </span>
+        </div>
+
+        <ExecutivePerformanceDashboard
+          data={vizData}
+          columns={schemaData?.columns?.map((c: any) => (typeof c === 'string' ? c : c.name)) || []}
+          datasetName={selectedDataset?.name || selectedDatasetId || 'Active Dataset'}
+          title="The Trade Desk — Performance Management"
+        />
+      </div>
 
       {/* Sample Templates Section */}
       <div className="space-y-3">

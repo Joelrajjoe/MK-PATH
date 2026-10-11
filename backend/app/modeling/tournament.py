@@ -63,11 +63,11 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
 
     # Clean target
     clean_df = df.dropna(subset=[target]).copy()
-    if len(clean_df) < 10:
+    if len(clean_df) < 4:
         return {
             "status": "HUMAN_REVIEW_REQUIRED",
             "error": "INSUFFICIENT_TARGET_INFORMATION",
-            "message": f"Dataset has fewer than 10 valid rows for target '{target}'.",
+            "message": f"Dataset has fewer than 4 valid rows for target '{target}'.",
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
@@ -81,7 +81,7 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
-    is_regression = pd.api.types.is_numeric_dtype(y_raw) and unique_targets > 10
+    is_regression = pd.api.types.is_numeric_dtype(y_raw) and not pd.api.types.is_bool_dtype(y_raw) and unique_targets > 10
 
     # Encode target if classification & non-numeric
     if is_regression:
@@ -98,7 +98,9 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
     
     # Simple preprocessing: numeric columns get filled with median, categoricals with mode/label encoded
     for col in X_df.columns:
-        if pd.api.types.is_numeric_dtype(X_df[col]):
+        if pd.api.types.is_bool_dtype(X_df[col]):
+            X_df[col] = X_df[col].astype(int)
+        elif pd.api.types.is_numeric_dtype(X_df[col]):
             median_val = X_df[col].median()
             X_df[col] = X_df[col].fillna(median_val if pd.notnull(median_val) else 0)
         else:
@@ -112,20 +114,28 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
-    # Train / Test split
+    # Adaptive Train / Test split
     use_stratify = None
-    if not is_temporal and not is_regression and len(y) > 0:
+    if not is_temporal and not is_regression and len(y) >= 8:
         val_counts = pd.Series(y).value_counts()
         if len(val_counts) > 1 and val_counts.min() >= 2:
             use_stratify = y
 
+    test_sz = 0.2
+    if len(X_df) < 6:
+        test_sz = 1
+    elif len(X_df) < 10:
+        test_sz = 2
+
     if is_temporal:
-        split_idx = int(len(X_df) * 0.8)
+        split_idx = max(1, int(len(X_df) * 0.8))
+        if split_idx >= len(X_df):
+            split_idx = len(X_df) - 1
         X_train, X_test = X_df.iloc[:split_idx], X_df.iloc[split_idx:]
         y_train, y_test = y[:split_idx], y[split_idx:]
     else:
         X_train, X_test, y_train, y_test = train_test_split(
-            X_df, y, test_size=0.2, random_state=42, stratify=use_stratify
+            X_df, y, test_size=test_sz, random_state=42, stratify=use_stratify
         )
 
     if len(X_train) == 0 or len(X_test) == 0:
@@ -140,6 +150,7 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler
 
+    lgb_min_child = max(1, min(5, len(X_train) // 2))
     if is_regression:
         from sklearn.linear_model import LinearRegression
         from sklearn.ensemble import RandomForestRegressor
@@ -150,7 +161,7 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
         }
         try:
             import lightgbm as lgb
-            models["LightGBM Regressor"] = lgb.LGBMRegressor(random_state=42, verbose=-1)
+            models["LightGBM Regressor"] = lgb.LGBMRegressor(random_state=42, verbose=-1, min_child_samples=lgb_min_child)
         except ImportError:
             logger.warning("LightGBM not installed. Skipping.")
     else:
@@ -160,7 +171,7 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
         }
         try:
             import lightgbm as lgb
-            models["LightGBM"] = lgb.LGBMClassifier(random_state=42, verbose=-1)
+            models["LightGBM"] = lgb.LGBMClassifier(random_state=42, verbose=-1, min_child_samples=lgb_min_child)
         except ImportError:
             logger.warning("LightGBM not installed. Skipping.")
 
@@ -257,7 +268,14 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
     # Calculate Pareto frontier
     candidates = build_pareto_frontier(candidates)
     pareto_models = [c for c in candidates if c.get("is_pareto_optimal")]
-    selected = max(pareto_models if pareto_models else candidates, key=lambda x: x["metrics"]["accuracy" if is_regression else "f1"])
+
+    def _rank_score(c):
+        m = c["metrics"]
+        if is_regression:
+            return m.get("r2", -999)
+        return (m.get("f1", 0) * 0.5) + (m.get("accuracy", 0) * 0.3) + (m.get("precision", 0) * 0.2)
+
+    selected = max(pareto_models if pareto_models else candidates, key=_rank_score)
 
     return {
         "status": "SUCCESS",
