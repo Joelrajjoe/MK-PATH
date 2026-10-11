@@ -43,12 +43,12 @@ class Settings:
     DOCS_DIR: Path = ROOT_DIR / "docs"
 
     # --- Ingestion limits (security section of Phase 4 spec) ---
-    MAX_UPLOAD_MB: int = int(os.getenv("MKPATH_MAX_UPLOAD_MB", "50"))
-    MAX_ZIP_ENTRIES: int = int(os.getenv("MKPATH_MAX_ZIP_ENTRIES", "200"))
-    MAX_ZIP_UNCOMPRESSED_MB: int = int(os.getenv("MKPATH_MAX_ZIP_UNCOMPRESSED_MB", "200"))
-    MAX_ZIP_RATIO: int = int(os.getenv("MKPATH_MAX_ZIP_RATIO", "100"))
+    MAX_UPLOAD_MB: int = int(os.getenv("MKPATH_MAX_UPLOAD_MB", "500"))
+    MAX_ZIP_ENTRIES: int = int(os.getenv("MKPATH_MAX_ZIP_ENTRIES", "1000"))
+    MAX_ZIP_UNCOMPRESSED_MB: int = int(os.getenv("MKPATH_MAX_ZIP_UNCOMPRESSED_MB", "2000"))
+    MAX_ZIP_RATIO: int = int(os.getenv("MKPATH_MAX_ZIP_RATIO", "500"))
     MAX_ZIP_DEPTH: int = int(os.getenv("MKPATH_MAX_ZIP_DEPTH", "1"))
-    MAX_PREVIEW_ROWS: int = int(os.getenv("MKPATH_MAX_PREVIEW_ROWS", "100"))
+    MAX_PREVIEW_ROWS: int = int(os.getenv("MKPATH_MAX_PREVIEW_ROWS", "1000"))
 
     # --- Semantic knowledge layer (Phase 6) ---
     # When context confidence drops below this threshold the semantic workflow

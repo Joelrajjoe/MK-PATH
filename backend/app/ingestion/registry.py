@@ -126,12 +126,17 @@ def preview(dataset_id: str, limit: int, parquet_path: Optional[str] = None) -> 
     conn = get_conn()
     view = view_name(dataset_id)
     result = conn.execute(f'SELECT * FROM "{view}" LIMIT {int(limit)}')
-    if hasattr(result, "arrow"):
-        table = result.arrow()
+    if hasattr(result, "to_arrow_table"):
+        table = result.to_arrow_table()
         columns = list(table.schema.names)
         rows = [{k: _jsonable(v) for k, v in row.items()} for row in table.to_pylist()]
     elif hasattr(result, "fetch_arrow_table"):
         table = result.fetch_arrow_table()
+        columns = list(table.schema.names)
+        rows = [{k: _jsonable(v) for k, v in row.items()} for row in table.to_pylist()]
+    elif hasattr(result, "arrow"):
+        reader = result.arrow()
+        table = reader.read_all() if hasattr(reader, "read_all") else reader
         columns = list(table.schema.names)
         rows = [{k: _jsonable(v) for k, v in row.items()} for row in table.to_pylist()]
     else:

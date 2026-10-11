@@ -144,14 +144,27 @@ export default function DataUpload({ projectId }: { projectId: string }) {
 
               <div className="space-y-4">
                 {(dataset.datasets || [dataset]).map((ds: any) => (
-                  <div key={ds.dataset_id || ds.id} className="rounded border p-4 bg-muted/20">
-                    <h4 className="font-medium">{ds.original_filename || ds.name}</h4>
-                    <p className="text-sm text-muted-foreground mb-3">
+                  <div key={ds.dataset_id || ds.id} className="rounded border p-4 bg-muted/20 space-y-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <h4 className="font-semibold text-base flex items-center gap-2">
+                        {ds.name || ds.original_filename || ds.table_name}
+                        {ds.archive_member && (
+                          <span className="text-[10px] bg-primary/10 text-primary font-mono px-2 py-0.5 rounded font-bold border border-primary/20">
+                            ZIP Member: {ds.archive_member}
+                          </span>
+                        )}
+                      </h4>
+                      <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 w-fit">
+                        Data Model Developed (DuckDB View Ready)
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
                       Format: {(ds.source_format || ds.format || '').toUpperCase()} • Rows: {ds.row_count || ds.rowCount} • Columns: {ds.column_count || ds.columnCount}
+                      {ds.quality_score !== undefined && ` • Quality Score: ${ds.quality_score}/100`}
                     </p>
-                    <div className="flex gap-4">
+                    <div className="flex gap-3 pt-2">
                       <Button variant="default" size="sm" onClick={() => navigate(`/projects/${projectId}/data/${ds.dataset_id || ds.id}`)}>
-                        <Database className="mr-2 h-4 w-4" /> View Dataset
+                        <Database className="mr-2 h-4 w-4" /> Explore Data Model
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => setStatus('IDLE')}>
                         Upload Another

@@ -24,6 +24,8 @@ logger = logging.getLogger("mkpath.ingestion")
 
 SOURCE_FORMATS = {
     ".csv": "csv",
+    ".tsv": "csv",
+    ".txt": "csv",
     ".xlsx": "xlsx",
     ".xls": "xls",
     ".json": "json",
@@ -32,7 +34,7 @@ SOURCE_FORMATS = {
     ".zip": "zip",
 }
 
-_TEXT_EXTENSIONS = {".csv", ".json", ".sql"}
+_TEXT_EXTENSIONS = {".csv", ".tsv", ".txt", ".json", ".sql"}
 
 
 # ---------------------------------------------------------------------------
@@ -87,6 +89,7 @@ def _new_dataset_doc(
 ) -> Dict[str, Any]:
     return {
         "dataset_id": dataset_id,
+        "name": table.table_name or original_filename,
         "source_file_id": source_file_id,
         "original_filename": original_filename,
         "source_format": source_format,

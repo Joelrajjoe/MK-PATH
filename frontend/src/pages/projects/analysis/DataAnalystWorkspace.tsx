@@ -14,9 +14,15 @@ import {
   Database,
   ShieldCheck,
   Activity,
-  DollarSign
+  DollarSign,
+  Lightbulb,
+  CheckCircle2,
+  Table,
+  Target,
+  ArrowRight
 } from 'lucide-react'
 import { api } from '@/lib/api'
+import DataVisualizer from '@/components/visualization/DataVisualizer'
 
 interface AnalysisTemplate {
   id: string
@@ -27,27 +33,6 @@ interface AnalysisTemplate {
   tags: string[]
   icon: any
 }
-
-const TEMPLATES: AnalysisTemplate[] = [
-  {
-    id: 'sales_margin',
-    title: 'Executive Sales & Profit Margin Performance',
-    description: 'Deep-dive into sales totals, profit distributions, and regional performance margins across product categories.',
-    query: 'Analyze sales performance, profit margins, and revenue breakdown by region and category',
-    badge: 'Executive & Revenue',
-    tags: ['Sales', 'Profit', 'Region', 'Category'],
-    icon: TrendingUp,
-  },
-  {
-    id: 'customer_segments',
-    title: 'Customer Segments & Operational Efficiency',
-    description: 'Evaluate customer segment profitability, discount exposure, and order quantities to optimize delivery operations.',
-    query: 'Analyze customer segments, order volume, discounting trends, and operational efficiency across Consumer, Corporate, and Home Office',
-    badge: 'Operations & Churn',
-    tags: ['Segment', 'Discount', 'Quantity', 'Ship Mode'],
-    icon: Users,
-  },
-]
 
 export default function DataAnalystWorkspace() {
   const { projectId } = useParams<{ projectId: string }>()
@@ -63,6 +48,10 @@ export default function DataAnalystWorkspace() {
   const [results, setResults] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
   const [activeTemplate, setActiveTemplate] = useState<string | null>(null)
+
+  // Real dataset schema & preview rows for visualizations
+  const [schemaData, setSchemaData] = useState<any>(null)
+  const [previewRows, setPreviewRows] = useState<any[]>([])
 
   useEffect(() => {
     if (projectId) {
@@ -88,9 +77,105 @@ export default function DataAnalystWorkspace() {
     }
   }, [projectId, initialDatasetId])
 
+  // Load schema and preview rows whenever selectedDatasetId changes
+  useEffect(() => {
+    if (selectedDatasetId) {
+      api.datasets.schema(selectedDatasetId).then(setSchemaData).catch(() => setSchemaData(null))
+      api.datasets.preview(selectedDatasetId, 100).then(res => {
+        if (res && res.rows) {
+          setPreviewRows(res.rows)
+        } else if (Array.isArray(res)) {
+          setPreviewRows(res)
+        }
+      }).catch(() => setPreviewRows([]))
+    }
+  }, [selectedDatasetId])
+
   const selectedDataset = datasets.find(d => (d.dataset_id || d.id) === selectedDatasetId)
   const isPreprocessed = selectedDataset?.is_derived === true || selectedDataset?.name?.toLowerCase().includes('preprocessed')
   const derivedDatasetAvailable = datasets.find(d => d.is_derived === true || d.name?.toLowerCase().includes('preprocessed'))
+
+  // Derive dynamic templates tailored to actual dataset schema
+  const dynamicTemplates: AnalysisTemplate[] = (() => {
+    const cols = schemaData?.columns?.map((c: any) => (typeof c === 'string' ? c : c.name)) || []
+    const lowerCols = cols.map((c: string) => c.toLowerCase())
+
+    const isSales = lowerCols.some((c: string) => c.includes('sales') || c.includes('profit') || c.includes('revenue'))
+    const isTraffic = lowerCols.some((c: string) => c.includes('accident') || c.includes('road') || c.includes('traffic'))
+
+    if (isTraffic) {
+      return [
+        {
+          id: 'traffic_safety',
+          title: 'Road Safety & Emergency Response Analysis',
+          description: 'Assess emergency response duration, road segment risks, and accident volume across vehicle categories.',
+          query: 'Analyze accident frequency, vehicle types, and emergency response minutes by road segment',
+          badge: 'Safety & Operations',
+          tags: ['Accidents', 'Emergency Response', 'Road Segment', 'Vehicle Type'],
+          icon: TrendingUp,
+        },
+        {
+          id: 'traffic_control',
+          title: 'Traffic Control & Protective Gear Compliance',
+          description: 'Evaluate impact of traffic control devices and helmet usage on road accident outcomes.',
+          query: 'Analyze traffic control types, helmet usage distribution, and accident occurrence rates',
+          badge: 'Compliance & Risk',
+          tags: ['Traffic Control', 'Helmet Worn', 'Road Safety'],
+          icon: Users,
+        },
+      ]
+    }
+
+    if (isSales) {
+      return [
+        {
+          id: 'sales_margin',
+          title: 'Executive Sales & Profit Margin Performance',
+          description: 'Deep-dive into sales totals, profit distributions, and regional performance margins across product categories.',
+          query: 'Analyze sales performance, profit margins, and revenue breakdown by region and category',
+          badge: 'Executive & Revenue',
+          tags: ['Sales', 'Profit', 'Region', 'Category'],
+          icon: TrendingUp,
+        },
+        {
+          id: 'customer_segments',
+          title: 'Customer Segments & Operational Efficiency',
+          description: 'Evaluate customer segment profitability, discount exposure, and order quantities to optimize delivery operations.',
+          query: 'Analyze customer segments, order volume, discounting trends, and operational efficiency across Consumer, Corporate, and Home Office',
+          badge: 'Operations & Churn',
+          tags: ['Segment', 'Discount', 'Quantity', 'Ship Mode'],
+          icon: Users,
+        },
+      ]
+    }
+
+    // Generic schema-adaptive templates
+    const numCols = cols.filter((c: string) => !c.toLowerCase().includes('id') && !c.toLowerCase().includes('date'))
+    const priMetric = numCols[0] || 'metrics'
+    const secMetric = numCols[1] || 'volume'
+    const priDim = cols.find((c: string) => !numCols.includes(c) && !c.toLowerCase().includes('id')) || 'categories'
+
+    return [
+      {
+        id: 'metric_overview',
+        title: `Comprehensive Performance Distribution`,
+        description: `Analyze key aggregations, mean benchmarks, and segment distributions across ${priDim}.`,
+        query: `Analyze ${priMetric} and ${secMetric} distribution across ${priDim}`,
+        badge: 'Core Analytics',
+        tags: [priMetric, priDim],
+        icon: TrendingUp,
+      },
+      {
+        id: 'operational_efficiency',
+        title: `Operational Variance & Segment Breakdown`,
+        description: `Evaluate multi-dimensional volume drivers and category concentration across ${priDim}.`,
+        query: `Evaluate ${priDim} concentration and ${priMetric} variance across leading segments`,
+        badge: 'Operations & Risk',
+        tags: [priDim, priMetric],
+        icon: Users,
+      },
+    ]
+  })()
 
   const handleSelectDataset = (id: string) => {
     setSelectedDatasetId(id)
@@ -169,13 +254,24 @@ export default function DataAnalystWorkspace() {
     return num.toLocaleString(undefined, { maximumFractionDigits: 2 })
   }
 
+  // Determine visualization data (prefer segment breakdown if available, else preview rows)
+  const vizData = (() => {
+    if (results && results.segments) {
+      const firstSegKey = Object.keys(results.segments)[0]
+      if (firstSegKey && Array.isArray(results.segments[firstSegKey]) && results.segments[firstSegKey].length > 0) {
+        return results.segments[firstSegKey]
+      }
+    }
+    return previewRows
+  })()
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Data Analyst Workspace & Dashboards</h2>
-          <p className="text-muted-foreground">
-            Execute deterministic analytical plans via DuckDB on your preprocessed datasets.
+          <h2 className="text-2xl font-bold tracking-tight">Data Analyst Workspace & Visual Dashboards</h2>
+          <p className="text-muted-foreground text-sm">
+            Execute deterministic analytical plans via DuckDB, extract empirical conclusions, generate strategic decision-making statements, and explore all 18 visualization charts.
           </p>
         </div>
       </div>
@@ -186,9 +282,9 @@ export default function DataAnalystWorkspace() {
           <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 font-medium">
             <ShieldCheck className="h-5 w-5 text-emerald-600 shrink-0" />
             <div>
-              <span className="font-bold">Active Dataset: Preprocessed Parquet</span>
+              <span className="font-bold">Active Dataset: Preprocessed Parquet Model</span>
               <span className="text-muted-foreground block text-[11px]">
-                Features winsorized via IQR, text normalized, constant columns removed, nulls imputed. Real computations will run on clean data.
+                Features winsorized via IQR, text normalized, constant columns removed, nulls imputed. Real computations run on clean data.
               </span>
             </div>
           </div>
@@ -201,7 +297,7 @@ export default function DataAnalystWorkspace() {
           <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
             <Database className="h-5 w-5 text-amber-600 shrink-0" />
             <span>
-              <strong>Notice:</strong> Currently viewing raw dataset. A preprocessed dataset is available.
+              <strong>Notice:</strong> Currently viewing raw dataset. A preprocessed dataset model is available.
             </span>
           </div>
           <Button
@@ -221,14 +317,14 @@ export default function DataAnalystWorkspace() {
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
             <h3 className="text-sm font-semibold tracking-tight uppercase text-muted-foreground">
-              Sample Analytical Dashboard Templates
+              Context-Aware Analytical Dashboard Templates
             </h3>
           </div>
-          <span className="text-xs text-muted-foreground">1-Click Execution on Preprocessed Data</span>
+          <span className="text-xs text-muted-foreground font-mono">Dynamic Schema Matching</span>
         </div>
 
         <div className="grid md:grid-cols-2 gap-4">
-          {TEMPLATES.map((tmpl) => {
+          {dynamicTemplates.map((tmpl) => {
             const Icon = tmpl.icon
             const isRunning = (generating || executing) && activeTemplate === tmpl.id
             return (
@@ -281,7 +377,7 @@ export default function DataAnalystWorkspace() {
                       ) : (
                         <>
                           <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-                          Generate Dashboard
+                          Run Analysis
                         </>
                       )}
                     </Button>
@@ -293,13 +389,13 @@ export default function DataAnalystWorkspace() {
         </div>
       </div>
 
-      {/* Query Bar */}
+      {/* User Goal Input Bar */}
       <Card>
         <CardContent className="p-5">
           <form onSubmit={handleGeneratePlan} className="space-y-3">
             {datasets.length > 0 && (
               <div className="flex flex-wrap items-center gap-3">
-                <span className="text-xs font-semibold text-muted-foreground uppercase">Dataset:</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase">Dataset Model:</span>
                 <select
                   className="border rounded px-3 py-1 text-sm bg-background font-medium max-w-md truncate"
                   value={selectedDatasetId}
@@ -320,7 +416,7 @@ export default function DataAnalystWorkspace() {
             )}
             <div className="flex gap-3">
               <Input
-                placeholder="Or type custom prompt: e.g. Analyze sales and profit margins by region and category"
+                placeholder="Enter custom business goal: e.g. Analyze accident frequency, emergency response delay, and road segment risks"
                 value={query}
                 onChange={e => {
                   setQuery(e.target.value)
@@ -433,6 +529,100 @@ export default function DataAnalystWorkspace() {
                   </CardContent>
                 </Card>
 
+                {/* 1. Data Conclusions Card */}
+                {results.conclusions && results.conclusions.length > 0 && (
+                  <Card className="border-indigo-500/30 bg-indigo-500/5 shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-bold text-indigo-700 dark:text-indigo-400 flex items-center gap-2">
+                        <Lightbulb className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                        Data Conclusions & Evidence-Based Findings
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Empirical conclusions directly computed from verified table data
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2.5">
+                      {results.conclusions.map((conc: string, idx: number) => (
+                        <div key={idx} className="flex items-start gap-2.5 text-xs text-foreground bg-background/80 p-3 rounded-lg border">
+                          <CheckCircle2 className="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" />
+                          <span className="leading-relaxed font-medium">{conc}</span>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* 2. Decision-Making Statements Card */}
+                {results.decisions && results.decisions.length > 0 && (
+                  <Card className="border-emerald-500/30 bg-emerald-500/5 shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
+                        <Target className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                        Decision-Making Statements & Strategic Recommendations
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Actionable decisions derived to optimize operations and mitigate risk
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2.5">
+                      {results.decisions.map((dec: string, idx: number) => (
+                        <div key={idx} className="flex items-start gap-2.5 text-xs text-foreground bg-background/80 p-3 rounded-lg border">
+                          <ArrowRight className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span className="leading-relaxed font-medium">{dec}</span>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* 3. Structured Decision Matrix Table */}
+                {results.decision_matrix && results.decision_matrix.length > 0 && (
+                  <Card className="overflow-hidden shadow-sm">
+                    <CardHeader className="bg-muted/30 py-3 border-b flex flex-row items-center justify-between">
+                      <div>
+                        <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                          <Table className="h-3.5 w-3.5 text-primary" /> Strategic Decision Matrix
+                        </CardTitle>
+                        <CardDescription className="text-[11px]">
+                          Prioritized framework linking data findings to concrete recommendations
+                        </CardDescription>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left">
+                          <thead className="bg-muted/40 border-b">
+                            <tr>
+                              <th className="p-2.5 font-semibold text-muted-foreground">Focus Area</th>
+                              <th className="p-2.5 font-semibold text-muted-foreground">Key Finding</th>
+                              <th className="p-2.5 font-semibold text-muted-foreground">Strategic Action</th>
+                              <th className="p-2.5 font-semibold text-muted-foreground">Impact</th>
+                              <th className="p-2.5 font-semibold text-muted-foreground">Confidence</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {results.decision_matrix.map((row: any, idx: number) => (
+                              <tr key={idx} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                                <td className="p-2.5 font-bold text-foreground">{row.focus_area}</td>
+                                <td className="p-2.5 text-muted-foreground max-w-xs">{row.finding}</td>
+                                <td className="p-2.5 font-medium text-foreground max-w-sm">{row.recommendation}</td>
+                                <td className="p-2.5">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                    row.impact === 'High' ? 'bg-red-500/10 text-red-600 border border-red-500/20' : 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
+                                  }`}>
+                                    {row.impact}
+                                  </span>
+                                </td>
+                                <td className="p-2.5 font-mono font-semibold text-emerald-600">{row.confidence}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Target Metric KPI Cards */}
                 {results.kpis && Object.keys(results.kpis).length > 0 && (
                   <div className="space-y-2">
@@ -475,7 +665,7 @@ export default function DataAnalystWorkspace() {
                       if (!Array.isArray(rows) || rows.length === 0) return null
                       const firstRow = rows[0]
                       const numericKeys = Object.keys(firstRow).filter(k => typeof firstRow[k] === 'number')
-                      const primaryNumKey = numericKeys.find(k => k.toLowerCase().includes('sum') || k.toLowerCase().includes('sales') || k.toLowerCase().includes('profit')) || numericKeys[0]
+                      const primaryNumKey = numericKeys.find(k => k.toLowerCase().includes('sum') || k.toLowerCase().includes('total') || k.toLowerCase().includes('count')) || numericKeys[0]
                       const maxVal = primaryNumKey ? Math.max(...rows.map((r: any) => Number(r[primaryNumKey]) || 0), 1) : 1
                       const dimKey = Object.keys(firstRow).find(k => typeof firstRow[k] === 'string') || Object.keys(firstRow)[0]
 
@@ -495,7 +685,7 @@ export default function DataAnalystWorkspace() {
                             </span>
                           </CardHeader>
                           <CardContent className="p-0">
-                            {/* Visual Proportional Bars for Top Dimension */}
+                            {/* Visual Proportional Bars */}
                             {primaryNumKey && rows.length <= 10 && (
                               <div className="p-4 border-b bg-background/50 space-y-2">
                                 <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground block">
@@ -611,6 +801,15 @@ export default function DataAnalystWorkspace() {
           </div>
         </div>
       )}
+
+      {/* 4. Complete 18-Chart Visualization Suite */}
+      <div className="mt-8">
+        <DataVisualizer
+          data={vizData}
+          columns={schemaData?.columns?.map((c: any) => (typeof c === 'string' ? c : c.name)) || []}
+          title="Interactive Analytics Visualization Suite (18 Chart Types across 5 Categories)"
+        />
+      </div>
     </div>
   )
 }

@@ -137,12 +137,15 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
         }
 
     candidates = []
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+
     if is_regression:
         from sklearn.linear_model import LinearRegression
         from sklearn.ensemble import RandomForestRegressor
         from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
         models = {
-            "Linear Regression": LinearRegression(),
+            "Linear Regression": make_pipeline(StandardScaler(), LinearRegression()),
             "Random Forest Regressor": RandomForestRegressor(n_estimators=50, max_depth=12, n_jobs=-1, random_state=42)
         }
         try:
@@ -152,7 +155,7 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
             logger.warning("LightGBM not installed. Skipping.")
     else:
         models = {
-            "Logistic Regression": LogisticRegression(max_iter=1000),
+            "Logistic Regression": make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000, random_state=42)),
             "Random Forest": RandomForestClassifier(n_estimators=50, max_depth=12, n_jobs=-1, random_state=42)
         }
         try:

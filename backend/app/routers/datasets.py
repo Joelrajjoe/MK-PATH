@@ -185,11 +185,19 @@ async def upload_dataset(
 
     # Persist metadata + audit events.
     from ..repo import utcnow
+    from ..profiling.profiler import profile_dataset
 
     for doc in result["datasets"]:
         doc["created_at"] = utcnow()
         if project_id:
             doc["project_id"] = project_id
+        
+        # Ensure DuckDB view is registered immediately
+        try:
+            registry.ensure_view(doc["dataset_id"], doc.get("normalized_path"))
+        except Exception as reg_exc:
+            logger.warning("Auto DuckDB view registration failed: %s", reg_exc)
+
     try:
         await repo.insert_datasets(result["datasets"])
         if project_id:
@@ -248,11 +256,15 @@ async def upload_dataset(
         "datasets": [
             {
                 "dataset_id": d["dataset_id"],
+                "name": d.get("name", d["table_name"]),
                 "original_filename": d["original_filename"],
                 "source_format": d["source_format"],
                 "table_name": d["table_name"],
                 "row_count": d["row_count"],
                 "column_count": d["column_count"],
+                "schema": d.get("schema", {}),
+                "quality_score": d.get("profile", {}).get("quality_score", 100) if d.get("profile") else 100,
+                "archive_member": d.get("archive_member"),
                 "ingestion_status": d["ingestion_status"],
                 "warnings": d["warnings"],
                 "errors": d["errors"],
@@ -332,14 +344,6 @@ async def preview_dataset(
 async def get_dataset_quality(dataset_id: str) -> Dict[str, Any]:
     doc = await _get_or_404(dataset_id)
     profile = doc.get("profile")
-    if not profile and doc.get("ingestion_status") == "completed":
-        try:
-            report = await run_in_threadpool(build_quality_report, doc)
-            profile = profile_summary(report)
-            await repo.update_dataset(dataset_id, {"profile": profile})
-        except Exception as exc:
-            logger.warning(f"On-the-fly profiling failed for {dataset_id}: {exc}")
-
     if not profile:
         raise HTTPException(
             status_code=404,

@@ -15,7 +15,7 @@ from typing import List, Optional, Tuple
 from ..config import settings
 
 # Extension allow-list (spec section 12). ZIP handled separately.
-SUPPORTED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".json", ".parquet", ".sql"}
+SUPPORTED_EXTENSIONS = {".csv", ".tsv", ".txt", ".xlsx", ".xls", ".json", ".parquet", ".sql"}
 ARCHIVE_EXTENSION = ".zip"
 
 _DRIVE_RE = re.compile(r"^[A-Za-z]:")

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ArrowLeft, Play, AlertCircle, CheckCircle, Loader2 } from 'lucide-react'
 import { api, type Dataset } from '@/lib/api'
+import DataVisualizer from '@/components/visualization/DataVisualizer'
 
 export default function DatasetExplorer({ datasetId: propDatasetId }: { datasetId?: string } = {}) {
   const { projectId } = useParams<{ projectId: string }>()
@@ -28,7 +29,7 @@ export default function DatasetExplorer({ datasetId: propDatasetId }: { datasetI
 
       const [s, p, q] = await Promise.all([
         api.datasets.schema(dsId).catch(() => null),
-        api.datasets.preview(dsId, 10).catch(() => null),
+        api.datasets.preview(dsId, 100).catch(() => null),
         api.datasets.quality(dsId).catch(() => null)
       ])
 
@@ -110,6 +111,7 @@ export default function DatasetExplorer({ datasetId: propDatasetId }: { datasetI
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="schema">Schema</TabsTrigger>
           <TabsTrigger value="preview">Preview</TabsTrigger>
+          <TabsTrigger value="visualizations">Visualizations</TabsTrigger>
           <TabsTrigger value="quality">Quality</TabsTrigger>
         </TabsList>
 
@@ -207,6 +209,14 @@ export default function DatasetExplorer({ datasetId: propDatasetId }: { datasetI
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+ 
+          <TabsContent value="visualizations">
+            <DataVisualizer
+              data={previewData?.rows || []}
+              columns={schemaData?.columns?.map((c: any) => (typeof c === 'string' ? c : c.name)) || []}
+              title={`${dataset.name || 'Dataset'} - Visual Analysis Suite (18 Chart Types)`}
+            />
           </TabsContent>
 
           <TabsContent value="quality">

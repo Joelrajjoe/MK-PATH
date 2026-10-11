@@ -656,7 +656,7 @@ def parse_file(
     path: Path, logical_name: str, sheet_name: Optional[str] = None
 ) -> List[TableInfo]:
     ext = path.suffix.lower()
-    if ext == ".csv":
+    if ext in (".csv", ".tsv", ".txt"):
         return [parse_csv(path, logical_name)]
     if ext in (".xlsx", ".xls"):
         return [parse_excel(path, logical_name, sheet_name)]

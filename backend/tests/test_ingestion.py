@@ -513,7 +513,7 @@ def test_sanitize_filename_never_yields_paths():
 def test_zip_limits_estimated_size():
     infos = []
     info = zipfile.ZipInfo("big.bin")
-    info.file_size = 300 * 1024 * 1024  # 300MB declared
+    info.file_size = (settings.MAX_ZIP_UNCOMPRESSED_MB + 50) * 1024 * 1024  # exceeds limit
     info.compress_size = 1024
     infos.append(info)
     with pytest.raises(SecurityError) as exc:

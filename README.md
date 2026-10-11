@@ -4,57 +4,94 @@ Multi-agent Knowledge Platform for Autonomous Transformation & Healing
 
 **Positioning:** Evidence-Gated Autonomous Data Platform
 
+---
+
 ## Architecture
 
-- **Backend:** Python 3.10+, FastAPI, MongoDB Atlas, DuckDB (Zero-LLM Profiling), Semantic Knowledge Layer (LangChain / Gemini).
-- **Frontend:** React, TypeScript, Tailwind CSS, shadcn/ui.
-- **Storage:** Fully isolated to the E: drive environment (`E:\MKPATH`).
+- **Backend:** Python 3.10+, FastAPI, MongoDB Atlas / Local Fallback, DuckDB (Deterministic Analytical Engine & Zero-LLM Profiling), Scikit-Learn / LightGBM, Semantic Knowledge Layer.
+- **Frontend:** React 19, TypeScript, Tailwind CSS, shadcn/ui, Custom Interactive SVG Visualization Engine.
+- **Storage:** Fully isolated to the storage environment (`E:\MKPATH`).
 
-## Current Status
-- **Phases 1-6:** Backend foundation, API, Ingestion, Profiling, Semantic layer completed and verified.
-- **Phase 7:** Frontend application shell completed (React Router, Dashboard, Project Workspace, typed API client).
-- **Phase 8:** Universal Data Upload UI completed (Drag and drop, CSV/Excel/JSON/Parquet/SQL/ZIP support, processing state indicators).
-- **Phase 9:** Dataset Explorer and Data Quality UI completed (Data visualization, schema inspection, pagination, quality metrics).
-- **Phase 10:** Knowledge Layer UI completed (Concept editing, ambiguity resolution panel, deterministic evidence display).
-- **Phase 11:** Human-in-the-Loop Clarification UI completed (Semantic Breakpoint logic handling LangGraph pauses).
-- **Phase 12:** Agent Execution Center completed (Visual pipeline, node states, safe evidence and output logs).
-- **Phase 13:** Data Analyst Workspace completed (Analysis planning, user approval flow, KPIs, explicit provenance tracking).
-- **Phase 14:** Temporal Leakage Verification UI completed (Deployment blocking, visual timelines, strictly mapped feature events).
-- **Phase 15:** Causal Analysis UI completed (Effect estimation, causal graphs, robust refutation tests, explicit limitations).
-- **Phase 16:** Model Tournament UI completed (Candidate scoring, strict optimization terminology, verification-gated artifacts).
-- **Phase 17:** Verification Center completed (Central trust interface mapping gates to deployment readiness).
-- **Phase 18:** Transformation and Healing UI completed (Automated derived dataset generation rules and approvals).
-- **Phase 19:** Artifact Center completed (Model cards, service endpoints, reports with strict verification gating).
-- **Phase 20:** Audit UI completed (Chronological event timeline, safe tracking, event filters).
-- **Phase 21-23:** End-to-End Integration, Security, and Polish completed (Real API connectivity, strict linting, styling refinement).
+---
+
+## Key Capabilities & Core Workflows
+
+### 1. Robust ZIP Archive Ingestion & Multi-Model Development
+- **High-Capacity Ingestion:** Configured for large archive bundles (up to 500 MB) preventing HTTP 413 `Request Entity Too Large` limits.
+- **Safe Extraction & Bomb Protection:** Enforces strict path-traversal prevention, compression ratio bounds, and nesting depth policies (`MAX_ZIP_DEPTH = 1`).
+- **Automatic Data Model Development:** Each data file in an archive (CSV, TSV, JSON, Parquet, Excel, SQL) is independently parsed, validated, and immediately registered as a queryable DuckDB view (`ds_<id>`).
+- **Schema & Quality Profiles:** Extract column types, nullability, row/column counts, and deterministic data quality scores (0–100) on demand.
+
+### 2. User-Goal Driven Analysis, Data Conclusions & Strategic Decision Making
+- **Custom Business Goal Planning:** Accepts natural language user objectives (e.g. *"Analyze customer segments, order volume, discounting trends, and operational efficiency"* or *"Analyze accident frequency, vehicle types, and emergency response minutes by road segment"*).
+- **Schema-Grounded SQL Execution (Zero Binder Errors):** Strict validation between requested analysis metrics and actual table columns prevents SQL runtime binder errors.
+- **Empirical Data Conclusions:** Automatically extracts key volume drivers, aggregate benchmarks, mean distributions, and category concentrations directly from verified rows.
+- **Actionable Decision-Making Statements:** Synthesizes strategic operational directives (e.g. resource reallocation, benchmark variance controls, cross-segment audits).
+- **Structured Decision Matrix:** Formulates a decision table with **Focus Area**, **Key Finding**, **Strategic Recommendation**, **Impact Rating (High/Medium)**, and **Confidence Score**.
+
+### 3. Comprehensive 18-Chart Visualization Suite Across 5 Categories
+Integrated directly into the **Data Analyst Workspace** and **Dataset Explorer** via `<DataVisualizer />`:
+
+1. **Comparison & Ranking**
+   - **Vertical Bar Chart:** Compares discrete categorical values with proportional heights.
+   - **Horizontal Bar Chart:** Ideal for category ranking and long label comparison.
+   - **Grouped Bar Chart:** Side-by-side metric comparison across secondary cohorts.
+   - **Stacked Bar Chart:** Multi-series categorical breakdown showing relative contributions.
+   - **Line Chart:** Continuous metric tracking and temporal fluctuations with hover points.
+   - **Area Chart:** Volume-emphasized metric trajectory with translucent gradients.
+
+2. **Composition & Part-to-Whole**
+   - **Pie / Donut Chart:** Angle-proportional breakdown with center aggregate totals and interactive slices.
+   - **Treemap:** Nested rectangular area partitioning for multi-category hierarchies.
+   - **Stacked Area Chart:** Cumulative continuous volume distribution over intervals.
+   - **Waterfall Chart:** Financial and operational delta progression (Base → Increments/Decrements → Total).
+
+3. **Distribution & Spread**
+   - **Histogram:** Equal-width binning revealing continuous frequency density.
+   - **Box and Whisker Plot (Boxplot):** Five-number statistical summary (Min, Q1, Median, Q3, Max) with IQR whiskers.
+   - **Density Plot (Kernel Density Estimate):** Smoothed Gaussian probability distribution curve.
+   - **Violin Plot:** Mirrored probability density envelope combined with internal median and quartile markers.
+
+4. **Correlation & Relationship**
+   - **Scatter Plot:** Bivariate Cartesian mapping of two continuous numeric columns with linear trend analysis.
+   - **Bubble Chart:** Tri-variate visualization mapping a 3rd numeric column to bubble radius.
+   - **Heatmap:** 2D grid matrix displaying cross-category metric density and intensity shading.
+
+5. **Specialized & Advanced Workflows**
+   - **Sankey Diagram:** Flow and volume transfers between source nodes and target outcomes.
+   - **Choropleth (Map):** Regional geographic distribution with metric density shading.
+   - **Radar / Spider Chart:** Multi-dimensional profile comparison across equiangular radial spokes.
+
+### 4. Robust Modeling Tournament
+- **Pre-Scaled Numerical Pipelines:** Logistic Regression and Linear Models wrapped in `StandardScaler` with convergence limits (`max_iter=2000`), completely eliminating scikit-learn `ConvergenceWarning`.
+- **Multi-Algorithm Tournament:** Benchmarks Logistic Regression, Random Forest, and LightGBM across AUC, F1, latency, and memory footprint.
+
+---
 
 ## Getting Started
 
 ### Backend
-1. `cd backend`
-2. `..\.venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8000`
+```bash
+cd backend
+..\.venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
 
 ### Frontend
-1. `cd frontend`
-2. `npm run dev`
+```bash
+cd frontend
+npm run dev
+```
 
-## Core Capabilities
-- DATA → KNOWLEDGE → AGENTS → VERIFICATION → TRANSFORMATION → HEALING
-- **Ingestion:** Secure ZIP extraction, extension validation, path traversal prevention.
-- **Zero-LLM Profiling:** Deterministic DuckDB metrics and quality scores.
-- **Semantic Layer:** Structured mapping of columns to business domains.
-- **Human Breakpoint:** Deterministic evidence collection with user resolution persistence.
-- **LangGraph Orchestrator:** Strongly-typed state graph governing agent flows.
-- **Data Analyst Agent:** Structured LLM planning executed deterministically by DuckDB with full provenance.
-- **Temporal Leakage Interceptor:** Strict `available_time <= prediction_time` enforcement blocking leaking features from entering modeling stages.
-- **Data Scientist Agent (Causal):** DoWhy-backed effect estimation with explicit assumption logging.
-- **Model Tournament:** 3D Pareto optimization (performance, latency, cost) with OOT validation logic for temporal datasets.
-- **Explainability & Fairness:** SHAP global/local importance mapping and conditional disparity checking across sensitive attributes.
-- **Evidence-Gated Verification Engine:** Aggregates multi-gate deterministic checks strictly enforcing `deployment_status = BLOCKED` upon any failures.
-- **Data Healing:** Immutable derivation-based data repairs (imputation/normalization) mapping before/after quality reports.
-- **Verified Artifact Generator:** Automated secure generation of FastAPI services, Pydantic schemas, and Pytests entirely reliant on Verification gate passing.
-- **Audit Lineage:** Secure deterministic timeline recording for every state-transition (without persisting secrets).
-- **Frontend Verification:** React UI safely mapping to all backend hooks including dynamic ZIP multi-file unbundling.
-- **E2E Integration:** Full connection of React uploads, LangGraph agent workflows, human breakpoints, and safe artifact generation.
-- **Fail-Safe Integrity:** Rigorous failure matrices capturing ZIP path traversal, SQL-drop injections, temporal leakage, and corruption handling gracefully.
-- **Storage Isolation Audit:** Aggressive monitoring of drive footprints restricting all system artifacts to `E:\MKPATH` protecting C-drive cache limits.
+---
+
+## Verification & Testing
+Run backend test suites:
+```bash
+cd backend
+..\.venv\Scripts\python -m pytest tests/test_ingestion.py tests/test_profiling.py tests/test_projects.py tests/test_remediation.py
+```
+Run frontend production build verification:
+```bash
+cd frontend
+npm run build
+```

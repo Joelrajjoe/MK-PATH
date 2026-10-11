@@ -477,3 +477,11 @@ def profile_summary(report: Dict[str, Any]) -> Dict[str, Any]:
         "row_count": report["statistics"].get("row_count", 0),
         "column_count": report["statistics"].get("column_count", 0),
     }
+
+
+def profile_dataset(dataset_or_id: Any, path: Optional[str] = None) -> Dict[str, Any]:
+    """Helper wrapper for build_quality_report."""
+    if isinstance(dataset_or_id, dict):
+        return build_quality_report(dataset_or_id)
+    return build_quality_report({"dataset_id": str(dataset_or_id), "normalized_path": path})
+
