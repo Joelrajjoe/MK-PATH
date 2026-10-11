@@ -317,7 +317,7 @@ class DatabaseManager:
 
     def get_database(self) -> Any:
         """Database accessor; returns Atlas PyMongo DB or LocalFallbackDB."""
-        return self._db if self._db else self._fallback_db
+        return self._db if self._db is not None else self._fallback_db
 
     def get_collection(self, name: str):
         """Collection accessor."""
