@@ -322,15 +322,15 @@ export default function DataAnalystWorkspace() {
             </h3>
           </div>
           <span className="text-xs text-muted-foreground font-mono">
-            {isPreprocessed ? 'Preprocessed Derived Model' : 'Active Raw Dataset'}
+            {selectedDataset ? (isPreprocessed ? 'Preprocessed Derived Model' : 'Active Raw Dataset') : 'No Dataset Uploaded'}
           </span>
         </div>
 
         <ExecutivePerformanceDashboard
           data={vizData}
           columns={schemaData?.columns?.map((c: any) => (typeof c === 'string' ? c : c.name)) || []}
-          datasetName={selectedDataset?.name || selectedDatasetId || 'Active Dataset'}
-          title="The Trade Desk — Performance Management"
+          datasetName={selectedDataset?.name || (datasets.length > 0 ? selectedDatasetId : '')}
+          title={selectedDataset?.name ? `${selectedDataset.name} — Performance Management` : 'Executive Performance Management'}
         />
       </div>
 
