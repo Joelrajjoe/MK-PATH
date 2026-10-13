@@ -179,7 +179,44 @@ export const api = {
         xhr.open('POST', `${API_BASE}/datasets/upload`, true);
         xhr.send(formData);
       });
-    }
+    },
+    delete: async (datasetId: string): Promise<any> => {
+      const res = await fetch(`${API_BASE}/datasets/${datasetId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail?.message || err.detail || 'Failed to delete dataset');
+      }
+      return await res.json();
+    },
+    updateMeta: async (datasetId: string, data: { name?: string; description?: string; table_name?: string }): Promise<any> => {
+      const res = await fetch(`${API_BASE}/datasets/${datasetId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail?.message || err.detail || 'Failed to update dataset metadata');
+      }
+      return await res.json();
+    },
+    modifyRow: async (datasetId: string, action: 'update' | 'delete' | 'add', rowIndex?: number, rowData?: any): Promise<any> => {
+      const res = await fetch(`${API_BASE}/datasets/${datasetId}/data/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, row_index: rowIndex, row_data: rowData }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail?.message || err.detail || 'Failed to modify dataset data');
+      }
+      return await res.json();
+    },
+    relationships: async (datasetId: string): Promise<any> => {
+      const res = await fetch(`${API_BASE}/datasets/${datasetId}/relationships`);
+      if (!res.ok) throw new Error('Failed to fetch dataset relationships');
+      return await res.json();
+    },
   },
   semantic: {
     get: async (datasetId: string): Promise<any> => {

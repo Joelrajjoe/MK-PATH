@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
-import { UploadCloud, FileType, CheckCircle, AlertCircle, Database } from 'lucide-react'
+import { UploadCloud, FileType, CheckCircle, AlertCircle, Database, Trash2 } from 'lucide-react'
 
 export default function DataUpload({ projectId }: { projectId: string }) {
   const navigate = useNavigate()
@@ -14,6 +14,7 @@ export default function DataUpload({ projectId }: { projectId: string }) {
   const [dataset, setDataset] = useState<any>(null)
   const [existingDatasets, setExistingDatasets] = useState<any[]>([])
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -22,6 +23,21 @@ export default function DataUpload({ projectId }: { projectId: string }) {
       api.datasets.list(projectId).then(ds => {
         setExistingDatasets(ds)
       }).catch(console.error)
+    }
+  }
+
+  const handleDeleteDataset = async (dsId: string, dsName: string) => {
+    if (!window.confirm(`Are you sure you want to delete dataset "${dsName}"? This action cannot be undone.`)) {
+      return
+    }
+    setDeletingId(dsId)
+    try {
+      await api.datasets.delete(dsId)
+      fetchExisting()
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete dataset')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -212,6 +228,15 @@ export default function DataUpload({ projectId }: { projectId: string }) {
                 <div className="flex gap-2">
                   <Button size="sm" onClick={() => navigate(`/projects/${projectId}/data/${ds.id || ds.dataset_id}`)}>
                     <Database className="mr-2 h-4 w-4" /> Explore Dataset
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={deletingId === (ds.id || ds.dataset_id)}
+                    onClick={() => handleDeleteDataset(ds.id || ds.dataset_id, ds.name || ds.original_filename || 'Dataset')}
+                    title="Delete dataset"
+                  >
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>

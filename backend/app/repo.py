@@ -64,6 +64,12 @@ async def update_dataset(dataset_id: str, update: Dict[str, Any]) -> None:
     )
 
 
+async def delete_dataset(dataset_id: str) -> bool:
+    coll = _require_coll("datasets")
+    res = await coll.delete_one({"dataset_id": dataset_id})
+    return res.deleted_count > 0
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 

@@ -81,7 +81,20 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
-    is_regression = pd.api.types.is_numeric_dtype(y_raw) and not pd.api.types.is_bool_dtype(y_raw) and unique_targets > 10
+    # Determine if target is regression or classification
+    from sklearn.utils.multiclass import type_of_target
+    target_type = "unknown"
+    try:
+        target_type = type_of_target(y_raw)
+    except Exception:
+        pass
+
+    is_float_target = pd.api.types.is_float_dtype(y_raw) and not np.all(np.equal(np.mod(y_raw.dropna(), 1), 0))
+    is_regression = (
+        target_type in ("continuous", "continuous-multioutput")
+        or is_float_target
+        or (pd.api.types.is_numeric_dtype(y_raw) and not pd.api.types.is_bool_dtype(y_raw) and unique_targets > 10)
+    )
 
     # Encode target if classification & non-numeric
     if is_regression:
@@ -205,10 +218,15 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
             # Calculate real metrics
             if is_regression:
                 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-                r2 = float(r2_score(y_test, preds))
-                rmse = float(np.sqrt(mean_squared_error(y_test, preds))) if 'np' in locals() else float(mean_squared_error(y_test, preds) ** 0.5)
+                try:
+                    r2_calc = r2_score(y_test, preds)
+                    r2 = float(r2_calc) if not np.isnan(r2_calc) else 0.0
+                except Exception:
+                    r2 = 0.0
+                rmse = float(np.sqrt(mean_squared_error(y_test, preds)))
                 mae = float(mean_absolute_error(y_test, preds))
-                perf = float(max(0.0, r2))
+                std_y = float(np.std(y)) if len(y) > 0 else 1.0
+                perf = float(max(0.0, min(1.0, 1.0 - (mae / (std_y + 1e-6))))) if std_y > 0 else float(max(0.0, r2))
 
                 candidates.append({
                     "model_name": name,
@@ -272,7 +290,11 @@ def run_model_tournament(df: pd.DataFrame, target: str, is_temporal: bool) -> Di
     def _rank_score(c):
         m = c["metrics"]
         if is_regression:
-            return m.get("r2", -999)
+            r2_val = m.get("r2", -999)
+            if not np.isnan(r2_val) and r2_val > 0:
+                return r2_val
+            rmse_val = m.get("rmse", 999999)
+            return -rmse_val if not np.isnan(rmse_val) else -999999
         return (m.get("f1", 0) * 0.5) + (m.get("accuracy", 0) * 0.3) + (m.get("precision", 0) * 0.2)
 
     selected = max(pareto_models if pareto_models else candidates, key=_rank_score)
