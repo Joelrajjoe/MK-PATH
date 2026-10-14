@@ -44,6 +44,39 @@ def _sanitize_col(col_name: str) -> str:
     return f'"{col_name.replace(chr(34), chr(34)+chr(34))}"'
 
 
+def _build_date_parse_expr(date_col: str) -> str:
+    """Return robust DuckDB expression to parse date/timestamp from column."""
+    sc = _sanitize_col(date_col)
+    return (
+        f"COALESCE("
+        f"TRY_STRPTIME({sc}, '%m/%d/%Y %H:%M'), "
+        f"TRY_STRPTIME({sc}, '%d/%m/%Y %H:%M'), "
+        f"TRY_STRPTIME({sc}, '%Y-%m-%d %H:%M:%S'), "
+        f"TRY_STRPTIME({sc}, '%d-%m-%Y'), "
+        f"TRY_STRPTIME({sc}, '%Y-%m-%d'), "
+        f"TRY_CAST({sc} AS TIMESTAMP)"
+        f")"
+    )
+
+
+def _is_identifier_col(c: str) -> bool:
+    """Determine if a column is a technical identifier/key rather than a business dimension."""
+    cl = c.lower().replace("-", "_")
+    if cl in ("id", "uuid", "guid", "key", "pk", "fk", "index", "no", "code", "num"):
+        return True
+    if cl.startswith("id_") or cl.startswith("uuid_"):
+        return True
+    if cl.endswith("_id") or cl.endswith("_uuid") or cl.endswith("_guid"):
+        return True
+    if cl.endswith("_no") or cl.endswith("_num") or cl.endswith("_code") or cl.endswith("_key"):
+        return True
+    if any(cl.endswith(sfx) for sfx in ["id", "no", "num", "code", "key"]) and not any(
+        k in cl for k in ["road", "type", "method", "status", "mode", "country", "period"]
+    ):
+        return True
+    return False
+
+
 def _detect_schema_roles(
     conn: duckdb.DuckDBPyConnection,
     table_name: str
@@ -51,9 +84,9 @@ def _detect_schema_roles(
     """
     Introspect DuckDB schema to identify:
     - Date / Temporal column
-    - Primary Categorical column (e.g. team, road_type, department, segment)
-    - Secondary Categorical column (e.g. location, city, weather, region)
-    - Primary Numeric metric column (e.g. speed_limit, sales, duration, volume)
+    - Primary Categorical column (e.g. team, road_type, department, segment, product)
+    - Secondary Categorical column (e.g. location, city, country, weather, region)
+    - Primary Numeric metric column (e.g. speed_limit, quantity, sales, duration, volume)
     - Target event column (e.g. accident_occurred, status, is_success)
     """
     desc = conn.execute(f'DESCRIBE "{table_name}"').fetchall()
@@ -64,7 +97,7 @@ def _detect_schema_roles(
     # 1. Date column search
     for c in cols:
         cl = c.lower()
-        if any(k in cl for k in ["date", "time", "timestamp", "incident_date", "created_at", "order_date"]):
+        if any(k in cl for k in ["date", "time", "timestamp", "incident_date", "created_at", "order_date", "invoicedate"]):
             date_col = c
             break
 
@@ -83,16 +116,20 @@ def _detect_schema_roles(
             target_col = c
             break
 
-    # 3. Primary category (team / road_type / department)
-    # Exclude IDs, keys, hashes
+    # 3. Primary category (team / road_type / department / product / description)
+    # Exclude IDs, keys, hashes, codes
     cat_candidates = [
         c for c in cols
         if c not in (date_col, target_col)
-        and not c.lower().endswith("_id")
-        and not c.lower().startswith("id_")
-        and c.lower() != "id"
+        and not _is_identifier_col(c)
         and any(k in types[c] for k in ["varchar", "string", "text", "char"])
     ]
+    if not cat_candidates:
+        cat_candidates = [
+            c for c in cols
+            if c not in (date_col, target_col)
+            and any(k in types[c] for k in ["varchar", "string", "text", "char"])
+        ]
 
     primary_cat = None
     for c in cat_candidates:
@@ -100,18 +137,27 @@ def _detect_schema_roles(
         if any(k in cl for k in ["road_type", "team", "department", "category", "segment", "division"]):
             primary_cat = c
             break
+    if not primary_cat:
+        for c in cat_candidates:
+            cl = c.lower()
+            if any(k in cl for k in ["description", "product", "item", "service", "type", "class", "group"]):
+                primary_cat = c
+                break
     if not primary_cat and cat_candidates:
         primary_cat = cat_candidates[0]
+    elif not primary_cat and cols:
+        non_date = [c for c in cols if c != date_col]
+        primary_cat = non_date[0] if non_date else cols[0]
     elif not primary_cat:
-        primary_cat = cols[0]
+        primary_cat = "category"
 
-    # 4. Secondary dimension (location / city / weather / region)
+    # 4. Secondary dimension (location / city / country / weather / region)
     secondary_cat = None
     for c in cat_candidates:
         if c == primary_cat:
             continue
         cl = c.lower()
-        if any(k in cl for k in ["location", "city", "weather", "region", "state", "branch", "area"]):
+        if any(k in cl for k in ["location", "city", "country", "weather", "region", "state", "branch", "area", "zone", "territory", "nation", "market", "site", "place"]):
             secondary_cat = c
             break
     if not secondary_cat:
@@ -122,7 +168,8 @@ def _detect_schema_roles(
     num_candidates = [
         c for c in cols
         if any(k in types[c] for k in ["int", "float", "double", "decimal", "numeric", "bigint"])
-        and not any(k in c.lower() for k in ["id", "index", "key", "zip", "code"])
+        and not _is_identifier_col(c)
+        and not any(k in c.lower() for k in ["hour", "day", "month", "year", "index", "lat", "lon"])
     ]
     primary_num = num_candidates[0] if num_candidates else None
 
@@ -152,20 +199,36 @@ def _build_filter_sql(
     primary_cat = roles.get("primary_cat")
     secondary_cat = roles.get("secondary_cat")
 
-    if date_col and filter_ctx.date_range_start:
-        clauses.append(f'{_sanitize_col(date_col)} >= ?')
-        params.append(filter_ctx.date_range_start)
+    if date_col:
+        parse_expr = _build_date_parse_expr(date_col)
+        if filter_ctx.date_range_start:
+            clauses.append(f'{parse_expr} >= ?')
+            params.append(filter_ctx.date_range_start)
 
-    if date_col and filter_ctx.date_range_end:
-        clauses.append(f'{_sanitize_col(date_col)} <= ?')
-        params.append(filter_ctx.date_range_end)
+        if filter_ctx.date_range_end:
+            clauses.append(f'{parse_expr} <= ?')
+            params.append(filter_ctx.date_range_end)
 
-    if primary_cat and filter_ctx.team:
-        clauses.append(f'{_sanitize_col(primary_cat)} = ?')
+        if filter_ctx.year:
+            clauses.append(f'year({parse_expr}) = ?')
+            params.append(int(filter_ctx.year))
+
+        if filter_ctx.quarter:
+            q_str = str(filter_ctx.quarter).upper().replace("Q", "").strip()
+            if q_str.isdigit() and int(q_str) in (1, 2, 3, 4):
+                clauses.append(f'quarter({parse_expr}) = ?')
+                params.append(int(q_str))
+
+        if filter_ctx.month:
+            clauses.append(f'month({parse_expr}) = ?')
+            params.append(int(filter_ctx.month))
+
+    if primary_cat and filter_ctx.team and filter_ctx.team != "All":
+        clauses.append(f"COALESCE(NULLIF(CAST({_sanitize_col(primary_cat)} AS VARCHAR), ''), 'Unknown') = ?")
         params.append(filter_ctx.team)
 
-    if secondary_cat and filter_ctx.location:
-        clauses.append(f'{_sanitize_col(secondary_cat)} = ?')
+    if secondary_cat and filter_ctx.location and filter_ctx.location != "All":
+        clauses.append(f"COALESCE(NULLIF(CAST({_sanitize_col(secondary_cat)} AS VARCHAR), ''), 'General') = ?")
         params.append(filter_ctx.location)
 
     if filter_ctx.search_query and filter_ctx.search_query.strip():
@@ -224,13 +287,15 @@ def compute_dashboard_analytics(
     # Check Date Boundaries
     date_min = None
     date_max = None
+    date_parse_expr = None
     if date_col:
+        date_parse_expr = _build_date_parse_expr(date_col)
         try:
             d_res = conn.execute(
-                f'SELECT min(CAST({_sanitize_col(date_col)} AS VARCHAR)), max(CAST({_sanitize_col(date_col)} AS VARCHAR)) '
-                f'FROM "{v_name}" WHERE {_sanitize_col(date_col)} IS NOT NULL'
+                f'SELECT min(CAST({date_parse_expr} AS VARCHAR)), max(CAST({date_parse_expr} AS VARCHAR)) '
+                f'FROM "{v_name}" WHERE {date_parse_expr} IS NOT NULL'
             ).fetchone()
-            if d_res:
+            if d_res and d_res[0]:
                 date_min, date_max = str(d_res[0]), str(d_res[1])
         except Exception as exc:
             logger.warning("Could not extract date boundaries: %s", exc)
@@ -247,7 +312,7 @@ def compute_dashboard_analytics(
     # Define primary event measure expression:
     # If target_col (e.g. accident_occurred = 'Yes'), use that. Else if primary_num, sum it. Else count(*).
     if target_col:
-        metric_expr = f"SUM(CASE WHEN {_sanitize_col(target_col)} = 'Yes' THEN 1.0 ELSE 0.0 END)"
+        metric_expr = f"SUM(CASE WHEN CAST({_sanitize_col(target_col)} AS VARCHAR) IN ('Yes', '1', 'True', 'true', 'Y') THEN 1.0 ELSE 0.0 END)"
         card1.metric_label = "(QTD Events)"
     elif primary_num:
         metric_expr = f"SUM(CAST({_sanitize_col(primary_num)} AS DOUBLE))"
@@ -258,18 +323,8 @@ def compute_dashboard_analytics(
 
     # Compute QoQ if date exists, or sequential halves if not
     has_temporal = False
-    if date_col:
+    if date_col and date_parse_expr:
         try:
-            # Check if incident_date can be extracted to quarters
-            # In DuckDB, if date is string 'DD-MM-YYYY', parse via strptime
-            sample_val = str(conn.execute(f'SELECT {_sanitize_col(date_col)} FROM "{v_name}" WHERE {_sanitize_col(date_col)} IS NOT NULL LIMIT 1').fetchone()[0])
-            if re.match(r'^\d{2}-\d{2}-\d{4}$', sample_val):
-                date_parse_expr = f"strptime({_sanitize_col(date_col)}, '%d-%m-%Y')"
-            elif re.match(r'^\d{4}-\d{2}-\d{2}$', sample_val):
-                date_parse_expr = f"CAST({_sanitize_col(date_col)} AS DATE)"
-            else:
-                date_parse_expr = f"TRY_CAST({_sanitize_col(date_col)} AS TIMESTAMP)"
-
             q_df = conn.execute(f"""
                 SELECT 
                     year({date_parse_expr}) as yr,
@@ -277,7 +332,7 @@ def compute_dashboard_analytics(
                     month({date_parse_expr}) as mo,
                     {metric_expr} as m_val
                 FROM "{v_name}"
-                WHERE {filter_sql} AND {_sanitize_col(date_col)} IS NOT NULL
+                WHERE {filter_sql} AND {date_parse_expr} IS NOT NULL
                 GROUP BY 1, 2, 3
                 ORDER BY 1, 2, 3
             """, filter_params).df()
@@ -320,15 +375,22 @@ def compute_dashboard_analytics(
         card1.is_positive = True
         card1.status_note = "Single temporal horizon detected; displaying sequential baseline."
 
-        # Compute synthetic chronological window slices
+        # Compute chronological window slices via CTE (avoiding window function in GROUP BY)
+        safe_filtered_cnt = max(1, filtered_records)
         window_df = conn.execute(f"""
+            WITH numbered AS (
+                SELECT 
+                    row_number() OVER() - 1 as r_num,
+                    *
+                FROM "{v_name}"
+                WHERE {filter_sql}
+            )
             SELECT 
-                FLOOR((row_number() OVER() - 1) * 6.0 / {max(1, filtered_records)}) as slice_idx,
+                FLOOR(r_num * 6.0 / {safe_filtered_cnt}) as slice_idx,
                 {metric_expr} as val
-            FROM "{v_name}"
-            WHERE {filter_sql}
-            GROUP BY slice_idx
-            ORDER BY slice_idx
+            FROM numbered
+            GROUP BY 1
+            ORDER BY 1
         """, filter_params).df()
         for idx, row in window_df.iterrows():
             card1.sparkline_points.append(SparklinePoint(
@@ -369,7 +431,6 @@ def compute_dashboard_analytics(
         # Generate multi-segment trajectory
         if card1.sparkline_points:
             for p in card1.sparkline_points:
-                # inverted trend for variance tracking
                 card2.sparkline_points.append(SparklinePoint(
                     label=p.label,
                     value=round(p.value * 0.94, 1),
@@ -441,7 +502,6 @@ def compute_dashboard_analytics(
     # CARD 4: Quarterly Team Performance (Combo Bar + Line Chart)
     # -------------------------------------------------------------------------
     card4 = Card4QuarterlyPerformance()
-    # Distinct categories for tabs
     distinct_cats = [r[0] for r in group_rows[:5]] if group_rows else ["General"]
     card4.available_tabs = distinct_cats
     active_tab = filter_ctx.team if (filter_ctx and filter_ctx.team and filter_ctx.team in distinct_cats) else distinct_cats[0]
@@ -452,7 +512,7 @@ def compute_dashboard_analytics(
     tab_escaped = active_tab.replace("'", "''")
     tab_filter = f"{filter_sql} AND COALESCE(NULLIF(CAST({_sanitize_col(primary_cat)} AS VARCHAR), ''), 'Unknown') = '{tab_escaped}'"
 
-    if date_col and has_temporal:
+    if date_col and has_temporal and date_parse_expr:
         try:
             combo_df = conn.execute(f"""
                 SELECT 
@@ -460,7 +520,7 @@ def compute_dashboard_analytics(
                     quarter({date_parse_expr}) as qtr,
                     {metric_expr} as bar_m
                 FROM "{v_name}"
-                WHERE {tab_filter} AND {_sanitize_col(date_col)} IS NOT NULL
+                WHERE {tab_filter} AND {date_parse_expr} IS NOT NULL
                 GROUP BY 1, 2
                 ORDER BY 1, 2
             """, filter_params).df()
@@ -480,24 +540,32 @@ def compute_dashboard_analytics(
             logger.warning("Combo series query fallback: %s", exc)
 
     if not card4.series:
-        # Default chronological 8-quarter layout matching screenshot
-        default_quarters = [
-            ("2015", "Q1", 43.0), ("2015", "Q2", 31.0), ("2015", "Q3", 29.0), ("2015", "Q4", 68.0),
-            ("2016", "Q1", 78.0), ("2016", "Q2", 47.0), ("2016", "Q3", 63.0), ("2016", "QTD", 54.0),
-        ]
-        # Scale to real category volume
-        active_cat_tot = float(next((float(r[2]) for r in group_rows if r[0] == active_tab), 100.0))
-        scale_factor = active_cat_tot / 413.0 if active_cat_tot > 0 else 1.0
-
-        for yr, qtr, base_val in default_quarters:
-            computed_bar = round(base_val * scale_factor, 1)
+        # Partition data into sequential chronological periods from the real dataset using CTE
+        safe_filtered_cnt = max(1, filtered_records)
+        slice_df = conn.execute(f"""
+            WITH numbered AS (
+                SELECT 
+                    row_number() OVER() - 1 as r_num,
+                    *
+                FROM "{v_name}"
+                WHERE {tab_filter}
+            )
+            SELECT 
+                FLOOR(r_num * 6.0 / {safe_filtered_cnt}) as slice_idx,
+                {metric_expr} as bar_val
+            FROM numbered
+            GROUP BY 1
+            ORDER BY 1
+        """, filter_params).fetchall()
+        for r in slice_df:
+            s_idx = int(r[0])
+            b_val = float(r[1]) if r[1] is not None else 0.0
             card4.series.append(QuarterlySeriesPoint(
-                period_label=f"{yr} {qtr}",
-                year=int(yr),
-                quarter=qtr,
-                bar_value=computed_bar,
-                line_value=round(computed_bar * 0.92, 1),
-                is_current_qtd=(qtr == "QTD")
+                period_label=f"Period {s_idx + 1}",
+                year=datetime.now(timezone.utc).year,
+                quarter=f"P{s_idx + 1}",
+                bar_value=round(b_val, 1),
+                line_value=round(b_val * 0.95, 1)
             ))
 
     # -------------------------------------------------------------------------
@@ -522,27 +590,33 @@ def compute_dashboard_analytics(
     denom1 = float(g1_stats[0]) if g1_stats and g1_stats[0] else 1.0
     num1 = float(g1_stats[1]) if g1_stats and g1_stats[1] else 0.0
 
-    # Calculate exact rate
-    rate1 = (num1 / denom1) * 100.0 if denom1 > 0 else 73.0
-    # Normalize between 10% and 95%
-    card5.percentage = round(min(98.0, max(5.0, rate1)), 1)
+    if target_col:
+        rate1 = (num1 / denom1) * 100.0 if denom1 > 0 else 50.0
+        card5.percentage = round(min(100.0, max(0.0, rate1)), 1)
+        card5.metric_description = f"{card5.percentage:.1f}% event rate ({int(num1)} of {int(denom1)} records)"
+    elif primary_num:
+        avg_per_record = num1 / denom1 if denom1 > 0 else 1.0
+        card5.percentage = round(min(100.0, max(10.0, min(95.0, avg_per_record * 10.0 if avg_per_record < 10 else 78.5))), 1)
+        card5.metric_description = f"{card5.percentage:.0f}% operational benchmark for {active_gauge1_tab}"
+    else:
+        card5.percentage = 75.0
+        card5.metric_description = f"Volume benchmark for {active_gauge1_tab}"
+
     card5.numerator = num1
     card5.denominator = denom1
     card5.center_label = "Attended"
-    card5.metric_description = f"{card5.percentage:.0f}% attended out of {int(denom1)} scheduled"
 
     # -------------------------------------------------------------------------
     # CARD 6: Location / Geographic Benchmark (Donut Gauge)
     # -------------------------------------------------------------------------
     card6 = Card6EngineeringPerformance()
-    # Distinct locations
     loc_rows = conn.execute(f"""
         SELECT DISTINCT COALESCE(NULLIF(CAST({_sanitize_col(secondary_cat)} AS VARCHAR), ''), 'General')
         FROM "{v_name}"
-        WHERE {filter_sql}
+        WHERE {filter_sql} AND {_sanitize_col(secondary_cat)} IS NOT NULL
         LIMIT 5
     """, filter_params).fetchall()
-    distinct_locs = [r[0] for r in loc_rows] if loc_rows else ["New York", "Pune", "Sydney"]
+    distinct_locs = [r[0] for r in loc_rows] if loc_rows else ["General"]
     card6.available_tabs = distinct_locs
     active_loc = filter_ctx.location if (filter_ctx and filter_ctx.location and filter_ctx.location in distinct_locs) else distinct_locs[0]
     card6.active_tab = active_loc
@@ -559,13 +633,19 @@ def compute_dashboard_analytics(
 
     denom2 = float(loc_stats[0]) if loc_stats and loc_stats[0] else 1.0
     num2 = float(loc_stats[1]) if loc_stats and loc_stats[1] else 0.0
-    rate2 = (num2 / denom2) * 100.0 if denom2 > 0 else 85.0
-    # On target percentage benchmark
-    card6.percentage = round(min(99.0, max(10.0, rate2 * 2.2 if rate2 < 45 else rate2)), 1)
+
+    if target_col:
+        rate2 = (num2 / denom2) * 100.0 if denom2 > 0 else 50.0
+        card6.percentage = round(min(100.0, max(0.0, rate2)), 1)
+        card6.benchmark_comparison = f"Target compliance in {active_loc}: {card6.percentage:.1f}% ({int(num2)} / {int(denom2)})"
+    else:
+        loc_share = (num2 / max(1.0, float(total_records))) * 100.0
+        card6.percentage = round(min(99.0, max(15.0, loc_share * 1.5 if loc_share < 50 else loc_share)), 1)
+        card6.benchmark_comparison = f"Benchmark score for {active_loc}: {card6.percentage:.0f}%"
+
     card6.numerator = num2
     card6.denominator = denom2
     card6.center_label = "On target"
-    card6.benchmark_comparison = f"Benchmark score for {active_loc}: {card6.percentage:.0f}%"
 
     # -------------------------------------------------------------------------
     # Complete Payload Assembly
@@ -608,18 +688,20 @@ def get_filter_dimensions(dataset_id: str) -> FilterDimensions:
     primary_cat = roles["primary_cat"]
     secondary_cat = roles["secondary_cat"]
 
-    # Extract distinct teams/categories
+    # Extract distinct teams/categories (limit 30)
     teams = [
-        r[0] for r in conn.execute(
-            f'SELECT DISTINCT COALESCE(NULLIF(CAST({_sanitize_col(primary_cat)} AS VARCHAR), \'\'), \'Unknown\') FROM "{v_name}" LIMIT 25'
+        str(r[0]) for r in conn.execute(
+            f'SELECT DISTINCT COALESCE(NULLIF(CAST({_sanitize_col(primary_cat)} AS VARCHAR), \'\'), \'Unknown\') '
+            f'FROM "{v_name}" WHERE {_sanitize_col(primary_cat)} IS NOT NULL LIMIT 30'
         ).fetchall()
         if r[0] is not None
     ]
 
-    # Extract distinct locations/attributes
+    # Extract distinct locations/attributes (limit 30)
     locations = [
-        r[0] for r in conn.execute(
-            f'SELECT DISTINCT COALESCE(NULLIF(CAST({_sanitize_col(secondary_cat)} AS VARCHAR), \'\'), \'General\') FROM "{v_name}" LIMIT 25'
+        str(r[0]) for r in conn.execute(
+            f'SELECT DISTINCT COALESCE(NULLIF(CAST({_sanitize_col(secondary_cat)} AS VARCHAR), \'\'), \'General\') '
+            f'FROM "{v_name}" WHERE {_sanitize_col(secondary_cat)} IS NOT NULL LIMIT 30'
         ).fetchall()
         if r[0] is not None
     ]
@@ -630,27 +712,22 @@ def get_filter_dimensions(dataset_id: str) -> FilterDimensions:
     date_max = None
 
     if date_col:
+        date_parse_expr = _build_date_parse_expr(date_col)
         try:
             d_res = conn.execute(
-                f'SELECT min(CAST({_sanitize_col(date_col)} AS VARCHAR)), max(CAST({_sanitize_col(date_col)} AS VARCHAR)) '
-                f'FROM "{v_name}" WHERE {_sanitize_col(date_col)} IS NOT NULL'
+                f'SELECT min(CAST({date_parse_expr} AS VARCHAR)), max(CAST({date_parse_expr} AS VARCHAR)) '
+                f'FROM "{v_name}" WHERE {date_parse_expr} IS NOT NULL'
             ).fetchone()
-            if d_res:
+            if d_res and d_res[0]:
                 date_min, date_max = str(d_res[0]), str(d_res[1])
 
-            # Try extracting distinct years
-            sample_val = str(conn.execute(f'SELECT {_sanitize_col(date_col)} FROM "{v_name}" WHERE {_sanitize_col(date_col)} IS NOT NULL LIMIT 1').fetchone()[0])
-            if re.match(r'^\d{2}-\d{2}-\d{4}$', sample_val):
-                yr_res = conn.execute(f'SELECT DISTINCT CAST(substr({_sanitize_col(date_col)}, 7, 4) AS INT) FROM "{v_name}" ORDER BY 1').fetchall()
-                years = [r[0] for r in yr_res if r[0] is not None]
-            elif re.match(r'^\d{4}-\d{2}-\d{2}$', sample_val):
-                yr_res = conn.execute(f'SELECT DISTINCT year(CAST({_sanitize_col(date_col)} AS DATE)) FROM "{v_name}" ORDER BY 1').fetchall()
-                years = [r[0] for r in yr_res if r[0] is not None]
+            yr_res = conn.execute(
+                f'SELECT DISTINCT year({date_parse_expr}) '
+                f'FROM "{v_name}" WHERE {date_parse_expr} IS NOT NULL ORDER BY 1'
+            ).fetchall()
+            years = [int(r[0]) for r in yr_res if r[0] is not None]
         except Exception as exc:
             logger.warning("Could not extract filter years: %s", exc)
-
-    if not years:
-        years = [2023, 2024, 2025]
 
     return FilterDimensions(
         years=years,
@@ -679,46 +756,39 @@ def get_drilldown_records(req: DrilldownRequest) -> DrilldownResponse:
     if req.category_tab and primary_cat:
         extra_clauses.append(f"COALESCE(NULLIF(CAST({_sanitize_col(primary_cat)} AS VARCHAR), ''), 'Unknown') = ?")
         extra_params.append(req.category_tab)
-        description += f" [Category: {req.category_tab}]"
+        description = f"Underlying records for {primary_cat} = '{req.category_tab}'"
 
     if req.location_tab and secondary_cat:
         extra_clauses.append(f"COALESCE(NULLIF(CAST({_sanitize_col(secondary_cat)} AS VARCHAR), ''), 'General') = ?")
         extra_params.append(req.location_tab)
-        description += f" [Location: {req.location_tab}]"
+        description += f" in {secondary_cat} = '{req.location_tab}'"
 
-    where_clause = filter_sql
-    all_params = list(filter_params)
+    combined_where = filter_sql
     if extra_clauses:
-        where_clause = f"({where_clause}) AND ({' AND '.join(extra_clauses)})"
-        all_params.extend(extra_params)
+        combined_where = f"({filter_sql}) AND {' AND '.join(extra_clauses)}"
+    all_params = filter_params + extra_params
 
-    total = conn.execute(f'SELECT count(*) FROM "{v_name}" WHERE {where_clause}', all_params).fetchone()[0]
+    total_records = conn.execute(
+        f'SELECT COUNT(*) FROM "{v_name}" WHERE {combined_where}',
+        all_params
+    ).fetchone()[0]
 
-    offset = max(0, (req.page - 1) * req.page_size)
-    limit = min(200, max(1, req.page_size))
+    offset = (req.page - 1) * req.page_size
+    df = conn.execute(
+        f'SELECT * FROM "{v_name}" WHERE {combined_where} LIMIT ? OFFSET ?',
+        all_params + [req.page_size, offset]
+    ).df()
 
-    cursor = conn.execute(f'SELECT * FROM "{v_name}" WHERE {where_clause} LIMIT {limit} OFFSET {offset}', all_params)
-    columns = [d[0] for d in cursor.description]
-    raw_rows = cursor.fetchall()
-
-    rows: List[Dict[str, Any]] = []
-    for r in raw_rows:
-        row_dict: Dict[str, Any] = {}
-        for col_name, val in zip(columns, r):
-            if val is None:
-                row_dict[col_name] = None
-            elif isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
-                row_dict[col_name] = None
-            else:
-                row_dict[col_name] = str(val) if not isinstance(val, (int, float, bool)) else val
-        rows.append(row_dict)
+    columns = list(df.columns)
+    # Convert numpy types to JSON serializable objects
+    rows = df.fillna("").to_dict(orient="records")
 
     return DrilldownResponse(
         card_id=req.card_id,
         filter_description=description,
-        total_matching_records=total,
+        total_matching_records=int(total_records),
         page=req.page,
-        page_size=limit,
+        page_size=req.page_size,
         columns=columns,
         rows=rows,
     )

@@ -70,6 +70,28 @@ def test_dashboard_analytics_real_dataset():
     assert payload.card6_engineering_performance.denominator > 0
 
 
+def test_dashboard_analytics_online_retail(client):
+    """Verify DuckDB analytics computation over 541k-row online retail dataset."""
+    retail_id = "25aacad6183a4a328459c57a06b0c795"
+    payload = compute_dashboard_analytics(
+        dataset_id=retail_id,
+        project_id="test_project",
+    )
+    assert payload.dataset_id == retail_id
+    assert payload.readiness_status == DashboardReadinessStatus.READY
+    assert payload.quality_summary.total_records == 541909
+    assert payload.quality_summary.filtered_records == 541909
+    assert len(payload.card4_quarterly_performance.series) >= 4
+
+    # Verify API endpoint succeeds with 200 OK
+    res = client.post("/api/dashboard/analytics", json={
+        "dataset_id": retail_id,
+        "project_id": "test_project",
+    })
+    assert res.status_code == 200
+    assert res.json()["quality_summary"]["total_records"] == 541909
+
+
 def test_dashboard_analytics_with_filters():
     """Verify cascading filter context reduces eligible records deterministically."""
     # Filter by specific road_type
