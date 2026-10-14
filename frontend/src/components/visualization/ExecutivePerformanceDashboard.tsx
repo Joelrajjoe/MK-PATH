@@ -79,6 +79,7 @@ export default function ExecutivePerformanceDashboard({
   const [activeView, setActiveView] = useState<'dashboard' | 'reports' | 'audit' | 'settings'>('dashboard')
   const [activeMenuCard, setActiveMenuCard] = useState<string | null>(null)
   const [cardActiveTab, setCardActiveTab] = useState<Record<string, string>>({})
+  const [showNotifications, setShowNotifications] = useState<boolean>(false)
 
   // Verification modal state
   const [verifyModalOpen, setVerifyModalOpen] = useState<boolean>(false)
@@ -98,13 +99,14 @@ export default function ExecutivePerformanceDashboard({
     loading: false
   })
 
-  // Notifications dropdown
-  const [showNotifications, setShowNotifications] = useState<boolean>(false)
-  const [notifications] = useState<any[]>([
-    { id: 1, text: 'DuckDB Parquet storage synchronized', time: 'Just now', type: 'success' },
-    { id: 2, text: 'Zero-tolerance independent SQL verification ready', time: '1m ago', type: 'info' },
-    { id: 3, text: 'Road accident dataset loaded (2,500 records)', time: '5m ago', type: 'info' }
-  ])
+  // Dynamic notifications based on live dataset analytics
+  const notifications = analytics ? [
+    { id: 1, text: `DuckDB Parquet storage synchronized for ${analytics.dataset_name || 'dataset'}`, time: 'Live', type: 'success' },
+    { id: 2, text: `Loaded ${analytics.quality_summary?.total_records?.toLocaleString() || 0} records into verified engine`, time: 'Now', type: 'info' },
+    { id: 3, text: analytics.status_explanation || 'Zero-tolerance independent SQL verification active', time: 'Active', type: 'info' }
+  ] : [
+    { id: 1, text: 'Connecting to DuckDB verified engine...', time: 'Now', type: 'info' }
+  ]
 
   // Pinned reports
   const [pinnedReports, setPinnedReports] = useState<any[]>([])
@@ -299,6 +301,11 @@ export default function ExecutivePerformanceDashboard({
     }
   }
 
+  // Export report as PDF via formatted print layout
+  const handleExportPdf = () => {
+    window.print()
+  }
+
   // Pin Card to Reports
   const handlePinReport = (cardId: string, cardTitle: string, summary: string) => {
     setActiveMenuCard(null)
@@ -422,14 +429,23 @@ export default function ExecutivePerformanceDashboard({
             <span>Verify Calculations</span>
           </button>
 
-          {/* Export Report Button */}
+          {/* Export Report Buttons */}
           <button
             onClick={() => handleExport('csv')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700/80 hover:bg-slate-600 text-slate-200 text-xs font-medium transition-colors border border-slate-600"
-            title="Download verified executive report"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700/80 hover:bg-slate-600 text-slate-200 text-xs font-medium transition-colors border border-slate-600 shadow-sm"
+            title="Download verified executive report (CSV)"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export CSV</span>
+          </button>
+
+          <button
+            onClick={handleExportPdf}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors shadow-sm"
+            title="Export dashboard as PDF document"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Export PDF</span>
           </button>
 
           {/* Search Box */}

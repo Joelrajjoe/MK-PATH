@@ -90,6 +90,27 @@ export default function DataUpload({ projectId }: { projectId: string }) {
       const result = await api.datasets.upload(projectId, file, (p) => {
         setProgress(p)
       })
+
+      // Execute exploratory data analysis and pre-processing profiling for each uploaded dataset
+      const datasets = result.datasets || [result]
+      if (Array.isArray(datasets) && datasets.length > 0) {
+        setStatus('PROFILING' as any)
+        for (const ds of datasets) {
+          const id = ds.dataset_id || ds.id
+          if (id) {
+            try {
+              const prof = await api.datasets.profile(id)
+              if (prof?.summary) {
+                ds.quality_score = prof.summary.quality_score
+                ds.quality_grade = prof.summary.quality_grade
+              }
+            } catch (pErr) {
+              console.warn('Post-upload exploratory profiling:', pErr)
+            }
+          }
+        }
+      }
+
       setStatus('COMPLETED')
       setDataset(result)
       fetchExisting()
@@ -196,9 +217,16 @@ export default function DataUpload({ projectId }: { projectId: string }) {
                 <FileType className="h-10 w-10 animate-pulse text-primary" />
               </div>
               <h3 className="font-medium mb-2">Processing {files[0]?.name}</h3>
-              <p className="text-sm text-muted-foreground mb-4">Status: {status}</p>
+              <p className="text-sm text-muted-foreground mb-4">
+                {status === 'PROFILING' 
+                  ? 'Executing automated Exploratory Data Analysis & statistical profiling...' 
+                  : `Uploading & registering data views (${Math.round(progress)}%)...`}
+              </p>
               <div className="w-full bg-secondary rounded-full h-2.5">
-                <div className="bg-primary h-2.5 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
+                <div 
+                  className={`h-2.5 rounded-full transition-all duration-300 ${status === 'PROFILING' ? 'bg-primary animate-pulse w-full' : 'bg-primary'}`} 
+                  style={status === 'PROFILING' ? undefined : { width: `${progress}%` }}
+                ></div>
               </div>
             </div>
           )}

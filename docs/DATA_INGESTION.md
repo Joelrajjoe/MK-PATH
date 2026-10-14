@@ -155,3 +155,9 @@ pure security units (sanitize_filename, zip limits, traversal entry rejection).
 - `.xls` write tests require the dev-only `xlwt` fixture writer (runtime reads use `xlrd`).
 - CPU-bound parse/profile work runs in worker threads (fine for the prototype;
   a task queue is a later-phase concern).
+
+## 9. Live Row Updates & DuckDB View Synchronization
+
+- **DuckDB File Lock Management:** On Windows, DuckDB's in-memory view can hold an active read lock on the target `.parquet` file. When row append, update, or delete operations occur via `PATCH /api/datasets/{dataset_id}/rows`, the platform explicitly calls `registry.unregister(dataset_id)` before writing updated Parquet data back to disk (`df.to_parquet(...)`), followed immediately by `registry.register(dataset_id, norm_path)`. This guarantees zero `[WinError 32]` collisions and instant downstream analytical synchronization.
+- **ZIP System Metadata Filtering:** The ZIP archive discovery mechanism automatically rejects non-data macOS/Windows artifacts including AppleDouble files (`._*`), `__MACOSX`, `.DS_Store`, `Thumbs.db`, and `desktop.ini`.
+

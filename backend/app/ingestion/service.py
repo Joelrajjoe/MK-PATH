@@ -171,6 +171,10 @@ def _discover_from_zip(
         fp = extract_dir / rel
         if fp.is_dir():
             continue
+        rel_name = Path(rel).name
+        # Skip Mac OS metadata (AppleDouble ._*), hidden files, .DS_Store, Thumbs.db
+        if rel_name.startswith(".") or "__MACOSX" in rel or rel_name in ("Thumbs.db", "desktop.ini"):
+            continue
         kind = classify_extension(rel)
         member_id = f"{archive_rel}!{rel}"
         if kind == "archive":

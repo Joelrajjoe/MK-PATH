@@ -21,25 +21,32 @@
     "category": "PRODUCTION_HARDCODE"
   },
   {
-    "file": "backend/app/analysis/analyst.py",
-    "line": 79,
+    "file": "backend/app/analytics/engine.py",
+    "line": 5,
     "match": "mock",
-    "content": "No mock data is produced; all numbers originate from SQL aggregation over user data.",
+    "content": "Zero mock data, zero simulated metrics, zero synthetic numbers.",
     "category": "PRODUCTION_MOCK"
   },
   {
     "file": "backend/app/ingestion/service.py",
-    "line": 344,
+    "line": 351,
     "match": "fake",
     "content": "# Nothing ingested -> structured fatal error (never a fake success).",
     "category": "DOCUMENTATION"
   },
   {
     "file": "backend/app/modeling/tournament.py",
-    "line": 221,
+    "line": 253,
     "match": "auc = 0.0",
     "content": "auc = 0.0",
     "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "backend/app/routers/dashboard.py",
+    "line": 6,
+    "match": "mock",
+    "content": "Zero mock data, zero simulated metrics, zero synthetic numbers.",
+    "category": "PRODUCTION_MOCK"
   },
   {
     "file": "backend/app/semantic/builder.py",
@@ -161,6 +168,20 @@
     "category": "LEGITIMATE_TEST"
   },
   {
+    "file": "backend/tests/test_pmsg.py",
+    "line": 161,
+    "match": "mock",
+    "content": "Evaluate stability calculation on a small, hand-calculated mock fixture.",
+    "category": "LEGITIMATE_TEST"
+  },
+  {
+    "file": "backend/tests/test_pmsg.py",
+    "line": 456,
+    "match": "Mock",
+    "content": "# Mock artifacts dir to tmp_path",
+    "category": "LEGITIMATE_TEST"
+  },
+  {
     "file": "backend/tests/test_profiling.py",
     "line": 223,
     "match": "fake",
@@ -190,21 +211,21 @@
   },
   {
     "file": "backend/tests/test_semantic.py",
-    "line": 256,
+    "line": 275,
     "match": "fake",
     "content": "fake = \"0\" * 32",
     "category": "LEGITIMATE_TEST"
   },
   {
     "file": "backend/tests/test_semantic.py",
-    "line": 257,
+    "line": 276,
     "match": "fake",
     "content": "assert client.post(f\"/api/datasets/{fake}/semantic\", json={}).status_code == 404",
     "category": "LEGITIMATE_TEST"
   },
   {
     "file": "backend/tests/test_semantic.py",
-    "line": 258,
+    "line": 277,
     "match": "fake",
     "content": "assert client.get(f\"/api/datasets/{fake}/semantic\").status_code == 404",
     "category": "LEGITIMATE_TEST"
@@ -231,6 +252,48 @@
     "category": "PRODUCTION_HARDCODE"
   },
   {
+    "file": "frontend/src/components/verification/PlanMultiverseStabilityGate.tsx",
+    "line": 184,
+    "match": "Mock",
+    "content": "Zero Mock Data",
+    "category": "PRODUCTION_MOCK"
+  },
+  {
+    "file": "frontend/src/components/visualization/ExecutivePerformanceDashboard.tsx",
+    "line": 336,
+    "match": "mock",
+    "content": "The Executive Performance Management Dashboard strictly enforces zero mock data. Please upload or select a supported dataset to compute live",
+    "category": "PRODUCTION_MOCK"
+  },
+  {
+    "file": "frontend/src/components/visualization/ExecutivePerformanceDashboard.tsx",
+    "line": 456,
+    "match": "placeholder",
+    "content": "placeholder=\"Search metrics...\"",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "frontend/src/components/visualization/ExecutivePerformanceDashboard.tsx",
+    "line": 459,
+    "match": "placeholder",
+    "content": "className=\"bg-[#1a202c] border border-slate-600 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-400 focus:outline-none ",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "frontend/src/components/visualization/RelationshipMapper.tsx",
+    "line": 407,
+    "match": "placeholder",
+    "content": "placeholder=\"Search relationships by column, table, predicate...\"",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "frontend/src/components/visualization/RelationshipMapper.tsx",
+    "line": 410,
+    "match": "placeholder",
+    "content": "className=\"w-full bg-background border rounded-md pl-9 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-n",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
     "file": "frontend/src/pages/projects/ProjectNew.tsx",
     "line": 65,
     "match": "placeholder",
@@ -239,9 +302,44 @@
   },
   {
     "file": "frontend/src/pages/projects/analysis/DataAnalystWorkspace.tsx",
-    "line": 89,
+    "line": 454,
     "match": "placeholder",
-    "content": "placeholder=\"What do you want to analyze? (e.g. Analyze customer churn and spend by region)\"",
+    "content": "placeholder=\"Enter custom business goal: e.g. Analyze accident frequency, emergency response delay, and road segment risks\"",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "frontend/src/pages/projects/data/DatasetExplorer.tsx",
+    "line": 307,
+    "match": "placeholder",
+    "content": "placeholder=\"Search rows...\"",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "frontend/src/pages/projects/data/DatasetExplorer.tsx",
+    "line": 582,
+    "match": "placeholder",
+    "content": "className=\"w-full mt-1.5 px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 text-slate-90",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "frontend/src/pages/projects/data/DatasetExplorer.tsx",
+    "line": 638,
+    "match": "placeholder",
+    "content": "placeholder={`Enter ${col}...`}",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "frontend/src/pages/projects/data/DatasetExplorer.tsx",
+    "line": 639,
+    "match": "placeholder",
+    "content": "className=\"w-full mt-1.5 px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 text-slate-90",
+    "category": "PRODUCTION_HARDCODE"
+  },
+  {
+    "file": "frontend/src/pages/projects/data/DatasetExplorer.tsx",
+    "line": 699,
+    "match": "placeholder",
+    "content": "placeholder=\"Dataset description or notes...\"",
     "category": "PRODUCTION_HARDCODE"
   },
   {

@@ -168,25 +168,24 @@ async def upload_dataset(
         _cleanup_upload(upload_id)
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception as exc:
-        # Unexpected failure: structured 500, no internals leaked, audit kept.
+        logger.exception("Unexpected ingestion error in upload_dataset: %s", exc)
         _cleanup_upload(upload_id)
         await record_audit(
             "dataset_ingestion_failed",
             status="error",
             upload_id=upload_id,
-            details={"filename": safe_name, "error": type(exc).__name__},
+            details={"filename": safe_name, "error": str(exc)},
         )
         raise HTTPException(
             status_code=500,
             detail={
                 "code": "INTERNAL_ERROR",
-                "message": f"Unexpected ingestion error: {type(exc).__name__}",
+                "message": f"Unexpected ingestion error: {str(exc)}",
             },
         )
 
     # Persist metadata + audit events.
     from ..repo import utcnow
-    from ..profiling.profiler import profile_dataset
 
     for doc in result["datasets"]:
         doc["created_at"] = utcnow()
@@ -539,7 +538,12 @@ async def update_dataset_data(dataset_id: str, body: RowUpdateRequest) -> Dict[s
     elif body.action == "add":
         if not body.row_data:
             raise HTTPException(status_code=400, detail="Missing row_data.")
-        new_row = {c: body.row_data.get(c, None) for c in df.columns}
+        new_row = {}
+        for c in df.columns:
+            val = body.row_data.get(c, None)
+            if val == "" or val == "None" or val == "null":
+                val = None
+            new_row[c] = val
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
 
     else:
@@ -561,11 +565,19 @@ async def update_dataset_data(dataset_id: str, body: RowUpdateRequest) -> Dict[s
                 df[col] = pd.to_numeric(df[col], errors="coerce").astype(dtype)
             elif pd.api.types.is_datetime64_any_dtype(dtype):
                 df[col] = pd.to_datetime(df[col], errors="coerce")
+            else:
+                df[col] = df[col].astype(str).replace({"None": None, "nan": None, "<NA>": None})
         except Exception as coerce_exc:
             logger.debug(f"Could not coerce {col} to {dtype}: {coerce_exc}")
 
+    # Unregister DuckDB view first to release Windows file locks
+    try:
+        registry.unregister(dataset_id)
+    except Exception as unreg_exc:
+        logger.warning(f"Could not unregister DuckDB view before Parquet write: {unreg_exc}")
+
     # Save changes back to Parquet
-    df.to_parquet(norm_path)
+    df.to_parquet(norm_path, index=False)
 
     # Re-register view in DuckDB for instant live querying
     try:
@@ -574,7 +586,7 @@ async def update_dataset_data(dataset_id: str, body: RowUpdateRequest) -> Dict[s
         logger.warning(f"Could not refresh DuckDB view: {exc}")
 
     # Update metadata count
-    await repo.update_dataset(dataset_id, {"row_count": len(df)})
+    await repo.update_dataset(dataset_id, {"row_count": len(df), "rowCount": len(df)})
     await record_audit(
         "dataset_rows_modified",
         status="ok",

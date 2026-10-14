@@ -7,11 +7,48 @@ BASE_DIR = Path(r"E:\MKPATH")
 RUN_ID = "e2e-20261007-064600"
 EVIDENCE_DIR = BASE_DIR / "_e2e_validation" / RUN_ID / "evidence"
 
-source_csv_path = Path(r"E:\MKPATH\datasets\53a3d79cb8454309afd46b9880df8f08\Superstore sales dataset.csv")
+# Dynamic discovery of source CSV and normalized Parquet
+source_csv_candidates = [
+    Path(r"E:\MKPATH\datasets\2947f509fcd5465d9fff20270d67be02\Superstore sales dataset.csv"),
+    Path(r"E:\MKPATH\datasets\53a3d79cb8454309afd46b9880df8f08\Superstore sales dataset.csv"),
+] + list((BASE_DIR / "datasets").rglob("*Superstore*.csv"))
+
+source_csv_path = None
+for p in source_csv_candidates:
+    if p.exists() and p.is_file():
+        source_csv_path = p
+        break
+
+if not source_csv_path:
+    raise FileNotFoundError("Could not locate Superstore sales dataset.csv in datasets directory")
+
 raw_df = pd.read_csv(source_csv_path, encoding="utf-8", encoding_errors="replace")
 
 # Setup DuckDB query directly on normalized parquet
-parquet_path = Path(r"E:\MKPATH\data\53a3d79cb8454309afd46b9880df8f08\3f14e39397b045e3b00a0bd973a4162f.parquet").as_posix()
+parquet_candidates = [
+    Path(r"E:\MKPATH\data\2947f509fcd5465d9fff20270d67be02\db3a7a13fb294de0a8766d11b4a1b5a7.parquet"),
+    Path(r"E:\MKPATH\data\53a3d79cb8454309afd46b9880df8f08\3f14e39397b045e3b00a0bd973a4162f.parquet"),
+]
+parquet_path = None
+for p in parquet_candidates:
+    if p.exists() and p.is_file():
+        parquet_path = p.as_posix()
+        break
+
+if not parquet_path:
+    conn_tmp = duckdb.connect()
+    for pq in (BASE_DIR / "data").rglob("*.parquet"):
+        try:
+            cols = [c[0] for c in conn_tmp.execute(f"DESCRIBE SELECT * FROM '{pq.as_posix()}'").fetchall()]
+            if "Sales" in cols and "Profit" in cols:
+                parquet_path = pq.as_posix()
+                break
+        except Exception:
+            continue
+
+if not parquet_path:
+    raise FileNotFoundError("Could not locate normalized parquet for Superstore dataset")
+
 conn = duckdb.connect()
 
 metrics = ["Sales", "Quantity", "Profit", "Discount"]

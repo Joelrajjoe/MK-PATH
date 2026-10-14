@@ -44,6 +44,17 @@ def _sanitize_col(col_name: str) -> str:
     return f'"{col_name.replace(chr(34), chr(34)+chr(34))}"'
 
 
+def _safe_float(val: Any, default: float = 0.0) -> float:
+    """Safely convert any value to float, handling None, NaN, inf, and strings."""
+    if val is None:
+        return default
+    try:
+        f = float(val)
+        return default if (math.isnan(f) or math.isinf(f)) else f
+    except (ValueError, TypeError):
+        return default
+
+
 def _build_date_parse_expr(date_col: str) -> str:
     """Return robust DuckDB expression to parse date/timestamp from column."""
     sc = _sanitize_col(date_col)
@@ -52,8 +63,13 @@ def _build_date_parse_expr(date_col: str) -> str:
         f"TRY_STRPTIME({sc}, '%m/%d/%Y %H:%M'), "
         f"TRY_STRPTIME({sc}, '%d/%m/%Y %H:%M'), "
         f"TRY_STRPTIME({sc}, '%Y-%m-%d %H:%M:%S'), "
-        f"TRY_STRPTIME({sc}, '%d-%m-%Y'), "
+        f"TRY_STRPTIME({sc}, '%m/%d/%Y'), "
+        f"TRY_STRPTIME({sc}, '%d/%m/%Y'), "
         f"TRY_STRPTIME({sc}, '%Y-%m-%d'), "
+        f"TRY_STRPTIME({sc}, '%d-%m-%Y'), "
+        f"TRY_STRPTIME({sc}, '%Y/%m/%d'), "
+        f"TRY_STRPTIME({sc}, '%b %d, %Y'), "
+        f"TRY_STRPTIME({sc}, '%d %b %Y'), "
         f"TRY_CAST({sc} AS TIMESTAMP)"
         f")"
     )
@@ -62,7 +78,7 @@ def _build_date_parse_expr(date_col: str) -> str:
 def _is_identifier_col(c: str) -> bool:
     """Determine if a column is a technical identifier/key rather than a business dimension."""
     cl = c.lower().replace("-", "_")
-    if cl in ("id", "uuid", "guid", "key", "pk", "fk", "index", "no", "code", "num"):
+    if cl in ("id", "uuid", "guid", "key", "pk", "fk", "index", "no", "code", "num", "row_id", "rowid"):
         return True
     if cl.startswith("id_") or cl.startswith("uuid_"):
         return True
@@ -84,9 +100,9 @@ def _detect_schema_roles(
     """
     Introspect DuckDB schema to identify:
     - Date / Temporal column
-    - Primary Categorical column (e.g. team, road_type, department, segment, product)
-    - Secondary Categorical column (e.g. location, city, country, weather, region)
-    - Primary Numeric metric column (e.g. speed_limit, quantity, sales, duration, volume)
+    - Primary Categorical column (e.g. team, road_type, department, segment, category)
+    - Secondary Categorical column (e.g. region, location, city, state, country)
+    - Primary Numeric metric column (e.g. sales, quantity, profit, speed_limit, volume)
     - Target event column (e.g. accident_occurred, status, is_success)
     """
     desc = conn.execute(f'DESCRIBE "{table_name}"').fetchall()
@@ -97,7 +113,7 @@ def _detect_schema_roles(
     # 1. Date column search
     for c in cols:
         cl = c.lower()
-        if any(k in cl for k in ["date", "time", "timestamp", "incident_date", "created_at", "order_date", "invoicedate"]):
+        if any(k in cl for k in ["order_date", "incident_date", "invoicedate", "created_at", "date", "timestamp", "time"]):
             date_col = c
             break
 
@@ -116,7 +132,7 @@ def _detect_schema_roles(
             target_col = c
             break
 
-    # 3. Primary category (team / road_type / department / product / description)
+    # 3. Primary category (team / road_type / department / category / segment)
     # Exclude IDs, keys, hashes, codes
     cat_candidates = [
         c for c in cols
@@ -151,15 +167,40 @@ def _detect_schema_roles(
     elif not primary_cat:
         primary_cat = "category"
 
-    # 4. Secondary dimension (location / city / country / weather / region)
-    secondary_cat = None
+    # 4. Secondary dimension (region / state / city / location / country / weather)
+    # Prioritize columns with rich cardinality (> 1)
+    secondary_candidates = []
     for c in cat_candidates:
         if c == primary_cat:
             continue
         cl = c.lower()
-        if any(k in cl for k in ["location", "city", "country", "weather", "region", "state", "branch", "area", "zone", "territory", "nation", "market", "site", "place"]):
-            secondary_cat = c
-            break
+        if any(k in cl for k in ["region", "state", "city", "location", "weather", "branch", "area", "zone", "territory", "market", "site", "country"]):
+            secondary_candidates.append(c)
+
+    secondary_cat = None
+    if secondary_candidates:
+        # Check cardinality to avoid picking single-value columns like Country = 'United States'
+        scored_candidates = []
+        for c in secondary_candidates:
+            try:
+                card_res = conn.execute(f'SELECT count(DISTINCT {_sanitize_col(c)}) FROM "{table_name}" WHERE {_sanitize_col(c)} IS NOT NULL').fetchone()
+                card = card_res[0] if card_res else 0
+            except Exception:
+                card = 0
+            # Higher score for moderate cardinality (between 2 and 50)
+            score = 10 if 2 <= card <= 50 else (5 if card > 50 else 0)
+            # Preference bonus for region/state/city
+            cl = c.lower()
+            if "region" in cl:
+                score += 5
+            elif "state" in cl:
+                score += 4
+            elif "city" in cl:
+                score += 3
+            scored_candidates.append((score, card, c))
+        scored_candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        secondary_cat = scored_candidates[0][2]
+
     if not secondary_cat:
         remaining = [c for c in cat_candidates if c != primary_cat]
         secondary_cat = remaining[0] if remaining else primary_cat
@@ -169,9 +210,17 @@ def _detect_schema_roles(
         c for c in cols
         if any(k in types[c] for k in ["int", "float", "double", "decimal", "numeric", "bigint"])
         and not _is_identifier_col(c)
-        and not any(k in c.lower() for k in ["hour", "day", "month", "year", "index", "lat", "lon"])
+        and not any(k in c.lower() for k in ["hour", "day", "month", "year", "index", "lat", "lon", "postal", "zip"])
     ]
-    primary_num = num_candidates[0] if num_candidates else None
+    # Priority for business value metrics: sales, revenue, profit, amount, speed_limit
+    primary_num = None
+    for c in num_candidates:
+        cl = c.lower()
+        if any(k in cl for k in ["sales", "revenue", "amount", "profit", "speed_limit", "volume", "total"]):
+            primary_num = c
+            break
+    if not primary_num and num_candidates:
+        primary_num = num_candidates[0]
 
     return {
         "date_col": date_col,
@@ -269,11 +318,14 @@ def compute_dashboard_analytics(
     filter_sql, filter_params = _build_filter_sql(filter_ctx, roles)
 
     # 3. Overall Counts & Data Quality Check
-    total_records = conn.execute(f'SELECT count(*) FROM "{v_name}"').fetchone()[0]
-    filtered_records = conn.execute(
+    tot_row = conn.execute(f'SELECT count(*) FROM "{v_name}"').fetchone()
+    total_records = int(tot_row[0]) if tot_row else 0
+
+    fil_row = conn.execute(
         f'SELECT count(*) FROM "{v_name}" WHERE {filter_sql}',
         filter_params
-    ).fetchone()[0]
+    ).fetchone()
+    filtered_records = int(fil_row[0]) if fil_row else 0
 
     warnings: List[str] = []
     readiness = DashboardReadinessStatus.READY
@@ -295,7 +347,7 @@ def compute_dashboard_analytics(
                 f'SELECT min(CAST({date_parse_expr} AS VARCHAR)), max(CAST({date_parse_expr} AS VARCHAR)) '
                 f'FROM "{v_name}" WHERE {date_parse_expr} IS NOT NULL'
             ).fetchone()
-            if d_res and d_res[0]:
+            if d_res and len(d_res) >= 2 and d_res[0] is not None and d_res[1] is not None:
                 date_min, date_max = str(d_res[0]), str(d_res[1])
         except Exception as exc:
             logger.warning("Could not extract date boundaries: %s", exc)
@@ -341,8 +393,8 @@ def compute_dashboard_analytics(
                 # Group by quarter
                 qtr_agg = q_df.groupby(["yr", "qtr"])["m_val"].sum().reset_index()
                 if len(qtr_agg) >= 2:
-                    current_q = float(qtr_agg.iloc[-1]["m_val"])
-                    prev_q = float(qtr_agg.iloc[-2]["m_val"])
+                    current_q = _safe_float(qtr_agg.iloc[-1]["m_val"])
+                    prev_q = _safe_float(qtr_agg.iloc[-2]["m_val"])
                     card1.current_value = current_q
                     card1.previous_value = prev_q
                     if prev_q > 0:
@@ -357,10 +409,11 @@ def compute_dashboard_analytics(
                     # Recent months sparkline (last 3-6 months)
                     recent_months = q_df.tail(6)
                     for _, row in recent_months.iterrows():
+                        m_val_f = _safe_float(row["m_val"])
                         card1.sparkline_points.append(SparklinePoint(
                             label=f"M{int(row['mo'])}",
-                            value=float(row["m_val"]),
-                            formatted=f"{float(row['m_val']):.0f}"
+                            value=m_val_f,
+                            formatted=f"{m_val_f:.0f}"
                         ))
                     has_temporal = True
         except Exception as exc:
@@ -368,8 +421,9 @@ def compute_dashboard_analytics(
 
     if not has_temporal:
         # Sequential partition fallback: compare first half to second half of data
-        tot_res = conn.execute(f'SELECT {metric_expr} FROM "{v_name}" WHERE {filter_sql}', filter_params).fetchone()[0] or 0.0
-        card1.current_value = float(tot_res)
+        tot_row_res = conn.execute(f'SELECT {metric_expr} FROM "{v_name}" WHERE {filter_sql}', filter_params).fetchone()
+        tot_res = _safe_float(tot_row_res[0] if tot_row_res else 0.0)
+        card1.current_value = tot_res
         card1.change_pct = 14.0  # Normalized indicator matching baseline performance
         card1.change_formatted = "+14%"
         card1.is_positive = True
@@ -393,10 +447,11 @@ def compute_dashboard_analytics(
             ORDER BY 1
         """, filter_params).df()
         for idx, row in window_df.iterrows():
+            v_val = _safe_float(row["val"])
             card1.sparkline_points.append(SparklinePoint(
                 label=f"P{idx+1}",
-                value=float(row["val"]),
-                formatted=f"{float(row['val']):.0f}"
+                value=v_val,
+                formatted=f"{v_val:.0f}"
             ))
 
     # -------------------------------------------------------------------------
@@ -408,20 +463,21 @@ def compute_dashboard_analytics(
 
     if date_col and has_temporal and len(q_df["yr"].unique()) >= 2:
         yr_agg = q_df.groupby("yr")["m_val"].sum().reset_index()
-        curr_yr = yr_agg.iloc[-1]["m_val"]
-        prior_yr = yr_agg.iloc[-2]["m_val"]
-        card2.current_value = float(curr_yr)
-        card2.prior_year_value = float(prior_yr)
+        curr_yr = _safe_float(yr_agg.iloc[-1]["m_val"])
+        prior_yr = _safe_float(yr_agg.iloc[-2]["m_val"])
+        card2.current_value = curr_yr
+        card2.prior_year_value = prior_yr
         if prior_yr > 0:
             yoy = ((curr_yr - prior_yr) / prior_yr) * 100.0
             card2.change_pct = round(yoy, 1)
             card2.change_formatted = f"{'+' if yoy >= 0 else ''}{yoy:.0f}%"
             card2.is_positive = (yoy >= 0)
         for _, row in yr_agg.iterrows():
+            y_val = _safe_float(row["m_val"])
             card2.sparkline_points.append(SparklinePoint(
                 label=str(int(row["yr"])),
-                value=float(row["m_val"]),
-                formatted=f"{float(row['m_val']):.0f}"
+                value=y_val,
+                formatted=f"{y_val:.0f}"
             ))
     else:
         card2.change_pct = -6.0
@@ -464,15 +520,15 @@ def compute_dashboard_analytics(
     bottom_icons = ["product", "data", "analytics"]
 
     if group_rows:
-        max_metric = float(max(float(r[2]) for r in group_rows)) if group_rows else 1.0
+        max_metric = float(max(_safe_float(r[2]) for r in group_rows)) if group_rows else 1.0
         if max_metric <= 0:
             max_metric = 1.0
 
         # Sort descending for top 3
-        sorted_desc = sorted(group_rows, key=lambda x: float(x[2]), reverse=True)
+        sorted_desc = sorted(group_rows, key=lambda x: _safe_float(x[2]), reverse=True)
         top_slice = sorted_desc[:3]
         for idx, (cat_name, cat_rows, cat_met) in enumerate(top_slice):
-            cat_met_f = float(cat_met)
+            cat_met_f = _safe_float(cat_met)
             pct = min(100.0, max(5.0, round((cat_met_f / max_metric) * 100.0, 1)))
             card3.top_teams.append(TopBottomTeamItem(
                 name=cat_name,
@@ -484,10 +540,10 @@ def compute_dashboard_analytics(
             ))
 
         # Bottom 3 (sorted ascending)
-        sorted_asc = sorted(group_rows, key=lambda x: float(x[2]))
+        sorted_asc = sorted(group_rows, key=lambda x: _safe_float(x[2]))
         bottom_slice = sorted_asc[:3]
         for idx, (cat_name, cat_rows, cat_met) in enumerate(bottom_slice):
-            cat_met_f = float(cat_met)
+            cat_met_f = _safe_float(cat_met)
             pct = min(100.0, max(5.0, round((cat_met_f / max_metric) * 100.0, 1)))
             card3.bottom_teams.append(TopBottomTeamItem(
                 name=cat_name,
@@ -528,7 +584,7 @@ def compute_dashboard_analytics(
             for _, row in combo_df.iterrows():
                 y_val = int(row["yr"])
                 q_val = f"Q{int(row['qtr'])}"
-                b_val = float(row["bar_m"])
+                b_val = _safe_float(row["bar_m"])
                 card4.series.append(QuarterlySeriesPoint(
                     period_label=f"{y_val} {q_val}",
                     year=y_val,
@@ -559,7 +615,7 @@ def compute_dashboard_analytics(
         """, filter_params).fetchall()
         for r in slice_df:
             s_idx = int(r[0])
-            b_val = float(r[1]) if r[1] is not None else 0.0
+            b_val = _safe_float(r[1])
             card4.series.append(QuarterlySeriesPoint(
                 period_label=f"Period {s_idx + 1}",
                 year=datetime.now(timezone.utc).year,
@@ -587,8 +643,8 @@ def compute_dashboard_analytics(
         WHERE {filter_sql} AND COALESCE(NULLIF(CAST({_sanitize_col(primary_cat)} AS VARCHAR), ''), 'Unknown') = '{g1_escaped}'
     """, filter_params).fetchone()
 
-    denom1 = float(g1_stats[0]) if g1_stats and g1_stats[0] else 1.0
-    num1 = float(g1_stats[1]) if g1_stats and g1_stats[1] else 0.0
+    denom1 = _safe_float(g1_stats[0]) if (g1_stats and g1_stats[0]) else 1.0
+    num1 = _safe_float(g1_stats[1]) if (g1_stats and g1_stats[1]) else 0.0
 
     if target_col:
         rate1 = (num1 / denom1) * 100.0 if denom1 > 0 else 50.0
@@ -631,8 +687,8 @@ def compute_dashboard_analytics(
         WHERE {filter_sql} AND COALESCE(NULLIF(CAST({_sanitize_col(secondary_cat)} AS VARCHAR), ''), 'General') = '{loc_escaped}'
     """, filter_params).fetchone()
 
-    denom2 = float(loc_stats[0]) if loc_stats and loc_stats[0] else 1.0
-    num2 = float(loc_stats[1]) if loc_stats and loc_stats[1] else 0.0
+    denom2 = _safe_float(loc_stats[0]) if (loc_stats and loc_stats[0]) else 1.0
+    num2 = _safe_float(loc_stats[1]) if (loc_stats and loc_stats[1]) else 0.0
 
     if target_col:
         rate2 = (num2 / denom2) * 100.0 if denom2 > 0 else 50.0
@@ -718,7 +774,7 @@ def get_filter_dimensions(dataset_id: str) -> FilterDimensions:
                 f'SELECT min(CAST({date_parse_expr} AS VARCHAR)), max(CAST({date_parse_expr} AS VARCHAR)) '
                 f'FROM "{v_name}" WHERE {date_parse_expr} IS NOT NULL'
             ).fetchone()
-            if d_res and d_res[0]:
+            if d_res and len(d_res) >= 2 and d_res[0] is not None and d_res[1] is not None:
                 date_min, date_max = str(d_res[0]), str(d_res[1])
 
             yr_res = conn.execute(
