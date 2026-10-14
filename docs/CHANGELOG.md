@@ -4,6 +4,38 @@ All notable changes to the Executive Performance Management Dashboard and analyt
 
 ---
 
+## [2.3.0] - 2026-10-14
+
+### Added
+- **Universal Schema-Adaptive Dynamic Dashboard Titles & Metrics (`engine.py` & `models.py`):**
+  - Replaced all legacy static labels ("ALL TEAMS - QUARTER-TO-QUARTER", "TYPE - YEAR-OVER-YEAR", "MEETINGS ATTENDED BY TYPE", "Attended", "On target") with 100% schema-driven dynamic titles and metrics.
+  - Card 1: Dynamic dimension and temporal change (`{dim} - Quarter-to-Quarter`).
+  - Card 2: Primary categorical velocity comparison (`{dim} Velocity - Year-over-Year`).
+  - Card 3: Real categorical ranking (`Top and bottom 3 {cat}s - Volume Share (YTD)`).
+  - Card 4: Granular interval breakdown (`Quarterly volume - {tab}`).
+  - Card 5: Dynamic concentration / share (`{tab} Share of {primary_cat} (QTD)`) with center label `"Share"`, real proportions and exact sample counts.
+  - Card 6: Secondary attribute benchmark (`{cat} Concentration (QTD)`) with top 5 categories sorted by frequency.
+- **Dynamic Run Selector & Gate Ingestion in Verification Center (`VerificationCenter.tsx`):**
+  - Eliminated hardcoded `run_1` state. Dynamically polls completed agent execution runs from `api.runs.list` and central verification gates from `/api/verification/gates`.
+  - Added run selection dropdown, execution status badges, timestamp tracking, and active dataset quality score.
+  - Linked Plan-Multiverse Stability Gate (PMSG) component directly to the active uploaded dataset.
+- **Unclipped Multi-Page Executive PDF Export (`frontend/src/index.css` & `ExecutivePerformanceDashboard.tsx`):**
+  - Overhauled `@media print` rules, eliminating single-page layout clipping caused by `h-screen`, `overflow-hidden`, and absolute positioning.
+  - Enabled multi-page continuous flow (`height: auto !important; overflow: visible !important; position: static !important;`) while preserving color fidelity (`-webkit-print-color-adjust: exact !important`).
+  - Added `print-hide` utility class to suppress search bars, actions, filters, and notification buttons during print/PDF generation.
+
+### Fixed
+- **Agent Execution Center MongoDB BSON Serialization (`runs.py` & `graph.py`):**
+  - Resolved `InvalidDocument: Cannot encode object: AnalysisPlan(...) of type <class 'app.analysis.analyst.AnalysisPlan'>` by serializing Pydantic models, datetime objects, and numpy values into BSON-safe primitives prior to collection insertion.
+  - Full LangGraph pipeline (`node_analysis_planning` -> `node_verification` -> `node_audit`) now executes and persists seamlessly to MongoDB Atlas.
+- **Automated Post-Upload EDA & Preprocessing:**
+  - Guaranteed automated transition from dataset ingestion to asynchronous DuckDB profiling and semantic discovery, immediately generating schema metadata, distribution statistics, and quality reports upon file upload.
+- **Card 6 DuckDB Ordering & NameError Resolution:**
+  - Replaced random distinct sampling in Card 6 with `GROUP BY ... ORDER BY COUNT(*) DESC LIMIT 5` to surface statistically meaningful categories.
+  - Added missing `json` standard library import in `engine.py`.
+
+---
+
 ## [2.2.0] - 2026-10-14
 
 ### Added

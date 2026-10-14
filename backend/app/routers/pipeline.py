@@ -255,7 +255,9 @@ async def get_verification_gates(
         logger.debug("Could not attach PMSG run to verification gates: %s", exc)
 
     report = run_verification_gates(project_id, run_id, ctx)
-    return report.model_dump()
+    dump = report.model_dump()
+    dump["gates"] = dump.get("summary", {}).get("results", [])
+    return dump
 
 
 @router.get("/artifacts")

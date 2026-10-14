@@ -50,9 +50,7 @@ export default function PlanMultiverseStabilityGate({ projectId, datasetId: init
     api.datasets.list(projectId).then(dsList => {
       setDatasets(dsList)
       if (!selectedDatasetId && dsList.length > 0) {
-        // Prefer accident dataset if present
-        const accidentDs = dsList.find(d => (d.name || d.original_filename || '').toLowerCase().includes('accident'))
-        setSelectedDatasetId(accidentDs ? (accidentDs.id || accidentDs.dataset_id || '') : (dsList[0].id || dsList[0].dataset_id || ''))
+        setSelectedDatasetId(dsList[0].id || dsList[0].dataset_id || '')
       }
     }).catch(() => {})
 

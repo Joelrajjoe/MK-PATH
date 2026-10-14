@@ -126,7 +126,8 @@ async def node_analysis_planning(state: MKPathState) -> Dict[str, Any]:
     semantic_ctx = state.get("semantic_context", {})
 
     plan = analyst.generate_plan(bg, schema, profile, semantic_ctx)
-    return {"dataset_id": dataset_id, "analysis_plan": plan, "status": "DATA_ANALYST"}
+    plan_dict = plan.model_dump() if hasattr(plan, "model_dump") else (plan.dict() if hasattr(plan, "dict") else dict(plan))
+    return {"dataset_id": dataset_id, "analysis_plan": plan_dict, "status": "DATA_ANALYST"}
 
 
 async def node_data_analyst(state: MKPathState) -> Dict[str, Any]:

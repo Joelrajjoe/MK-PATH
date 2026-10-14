@@ -52,7 +52,7 @@ class QuarterlySeriesPoint(BaseModel):
 
 
 class Card1QuarterToQuarter(BaseModel):
-    title: str = "All teams - quarter-to-quarter"
+    title: str = "Quarter-to-Quarter Performance"
     metric_label: str = "(QTD)"
     change_pct: Optional[float] = None
     change_formatted: str = "N/A"
@@ -67,9 +67,9 @@ class Card1QuarterToQuarter(BaseModel):
 
 
 class Card2YearOverYear(BaseModel):
-    title: str = "Leading team - year-over-year"
+    title: str = "Year-over-Year Trajectory"
     metric_label: str = "(QTD)"
-    selected_team: str = "All Teams"
+    selected_team: str = "Primary Dimension"
     change_pct: Optional[float] = None
     change_formatted: str = "N/A"
     is_positive: bool = True
@@ -83,7 +83,7 @@ class Card2YearOverYear(BaseModel):
 
 
 class Card3TopBottomTeams(BaseModel):
-    title: str = "Top and bottom 3 teams - percentage of goals (YTD)"
+    title: str = "Top and bottom 3 categories - Proportion (YTD)"
     primary_dimension: str
     top_teams: List[TopBottomTeamItem] = Field(default_factory=list)
     bottom_teams: List[TopBottomTeamItem] = Field(default_factory=list)
@@ -93,35 +93,35 @@ class Card3TopBottomTeams(BaseModel):
 
 
 class Card4QuarterlyPerformance(BaseModel):
-    title: str = "Quarterly team performance (percentage of goal)"
+    title: str = "Quarterly Distribution & Trends"
     available_tabs: List[str] = Field(default_factory=list)
     active_tab: str = ""
     series: List[QuarterlySeriesPoint] = Field(default_factory=list)
-    metric_name: str = "Performance"
+    metric_name: str = "Metric"
     legend_label: str = "Monthly"
     last_updated_text: str = "Live calculated"
 
 
 class Card5MeetingsAttended(BaseModel):
-    title: str = "Meetings attended by team (QTD)"
+    title: str = "Category Concentration (QTD)"
     available_tabs: List[str] = Field(default_factory=list)
     active_tab: str = ""
     percentage: float = 0.0
     numerator: float = 0.0
     denominator: float = 0.0
-    center_label: str = "Attended"
-    metric_description: str = "Rate within category"
+    center_label: str = "Share"
+    metric_description: str = "Distribution within dataset"
     last_updated_text: str = "Live calculated"
 
 
 class Card6EngineeringPerformance(BaseModel):
-    title: str = "Location performance benchmark (QTD)"
+    title: str = "Secondary Attribute Benchmark (QTD)"
     available_tabs: List[str] = Field(default_factory=list)
     active_tab: str = ""
     percentage: float = 0.0
     numerator: float = 0.0
     denominator: float = 0.0
-    center_label: str = "On target"
+    center_label: str = "Share"
     benchmark_comparison: str = "Normalized to dataset benchmark"
     last_updated_text: str = "Live calculated"
 

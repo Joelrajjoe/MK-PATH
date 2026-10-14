@@ -15,13 +15,34 @@ export default function VerificationCenter() {
   const [selectedGate, setSelectedGate] = useState<string | null>(null)
   const [verificationData, setVerificationData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [runs, setRuns] = useState<any[]>([])
+  const [selectedRunId, setSelectedRunId] = useState<string>('')
+  const [selectedDataset, setSelectedDataset] = useState<any>(null)
 
-  const loadVerificationData = () => {
+  const loadVerificationData = async (targetRun?: string) => {
     setLoading(true)
-    api.verification.getGates(projectId || 'project_1', 'run_1')
-      .then(res => setVerificationData(res))
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    try {
+      // 1. Fetch runs for project
+      const runList = await api.runs.list(projectId).catch(() => [])
+      setRuns(runList || [])
+
+      const effectiveRunId = targetRun || selectedRunId || (runList && runList.length > 0 ? runList[0].run_id : 'run_1')
+      setSelectedRunId(effectiveRunId)
+
+      // 2. Fetch datasets to get real quality score
+      const dsList = await api.datasets.list(projectId).catch(() => [])
+      const activeDs = dsList && dsList.length > 0 ? dsList[0] : null
+      setSelectedDataset(activeDs)
+      const qScore = activeDs?.qualityScore ?? activeDs?.profile?.quality_score ?? 100.0
+
+      // 3. Fetch verification gates
+      const res = await api.verification.getGates(projectId || 'project_1', effectiveRunId, qScore)
+      setVerificationData(res)
+    } catch (err) {
+      console.error('Failed to load verification data:', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -58,9 +79,13 @@ export default function VerificationCenter() {
     )
   }
 
-  const gatesList = verificationData?.gates || []
+  const gatesList = verificationData?.gates || verificationData?.summary?.results || []
   const overallState = verificationData?.deployment_status || 'READY'
   const selectedDetails = gatesList.find((g: any) => g.gate_id === selectedGate)
+  const failureReason = typeof verificationData?.summary === 'string'
+    ? verificationData.summary
+    : (verificationData?.summary?.results?.find((g: any) => g.status === 'FAIL')?.reason ||
+       'Mandatory verification criteria evaluated.')
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -68,6 +93,36 @@ export default function VerificationCenter() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight">MK-Path Verification Center</h2>
           <p className="text-muted-foreground text-sm">Evidence-gated trust, robustness, and deployment readiness control.</p>
+        </div>
+
+        {/* Dynamic Run & Dataset Selector */}
+        <div className="flex items-center gap-3">
+          {runs.length > 0 && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-muted-foreground font-medium">Run:</span>
+              <select
+                value={selectedRunId}
+                onChange={(e) => {
+                  const newRunId = e.target.value
+                  setSelectedRunId(newRunId)
+                  loadVerificationData(newRunId)
+                }}
+                className="bg-background border rounded-lg px-2.5 py-1.5 text-xs font-mono font-medium focus:ring-1 focus:ring-primary focus:outline-none"
+              >
+                {runs.map((r: any) => (
+                  <option key={r.run_id} value={r.run_id}>
+                    {r.run_id.slice(0, 8)} ({r.status})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {selectedDataset && (
+            <Badge variant="outline" className="px-2.5 py-1 text-xs font-normal bg-muted/40">
+              {selectedDataset.name || selectedDataset.original_filename || 'Dataset'} (QS: {selectedDataset.qualityScore ?? selectedDataset.profile?.quality_score ?? 100})
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -94,7 +149,7 @@ export default function VerificationCenter() {
                   <div className="text-3xl font-black uppercase tracking-widest">{overallState}</div>
                   {overallState === 'BLOCKED' && (
                     <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded text-xs text-destructive font-medium">
-                      {verificationData?.summary || 'Mandatory verification gates failed. Deployment prohibited.'}
+                      {failureReason}
                     </div>
                   )}
                   {overallState === 'READY' && (

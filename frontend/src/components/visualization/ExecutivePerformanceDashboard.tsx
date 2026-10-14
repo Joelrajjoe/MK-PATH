@@ -419,74 +419,76 @@ export default function ExecutivePerformanceDashboard({
             </div>
           )}
 
-          {/* Independent Verification Button */}
-          <button
-            onClick={handleRunVerification}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition-colors shadow-sm"
-            title="Run independent DuckDB SQL assertions against raw data"
-          >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Verify Calculations</span>
-          </button>
-
-          {/* Export Report Buttons */}
-          <button
-            onClick={() => handleExport('csv')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700/80 hover:bg-slate-600 text-slate-200 text-xs font-medium transition-colors border border-slate-600 shadow-sm"
-            title="Download verified executive report (CSV)"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export CSV</span>
-          </button>
-
-          <button
-            onClick={handleExportPdf}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors shadow-sm"
-            title="Export dashboard as PDF document"
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span>Export PDF</span>
-          </button>
-
-          {/* Search Box */}
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-            <input
-              type="text"
-              placeholder="Search metrics..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-[#1a202c] border border-slate-600 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-36 focus:w-48 transition-all"
-            />
-          </div>
-
-          {/* Notifications Popover */}
-          <div className="relative">
+          <div className="flex items-center gap-3 print-hide">
+            {/* Independent Verification Button */}
             <button
-              onClick={() => setShowNotifications(!showNotifications)}
-              className="relative p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+              onClick={handleRunVerification}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition-colors shadow-sm"
+              title="Run independent DuckDB SQL assertions against raw data"
             >
-              <Bell className="w-4 h-4" />
-              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-400" />
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Verify Calculations</span>
             </button>
-            {showNotifications && (
-              <div className="absolute right-0 top-11 z-50 w-72 bg-[#1e293b] border border-slate-700 rounded-xl shadow-2xl p-3 text-xs">
-                <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-700">
-                  <span className="font-semibold text-slate-200">System Audit Notifications</span>
-                  <button onClick={() => setShowNotifications(false)} className="text-slate-400 hover:text-white">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
+
+            {/* Export Report Buttons */}
+            <button
+              onClick={() => handleExport('csv')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700/80 hover:bg-slate-600 text-slate-200 text-xs font-medium transition-colors border border-slate-600 shadow-sm"
+              title="Download verified executive report (CSV)"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export CSV</span>
+            </button>
+
+            <button
+              onClick={handleExportPdf}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors shadow-sm"
+              title="Export dashboard as PDF document"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Export PDF</span>
+            </button>
+
+            {/* Search Box */}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+              <input
+                type="text"
+                placeholder="Search metrics..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="bg-[#1a202c] border border-slate-600 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-36 focus:w-48 transition-all"
+              />
+            </div>
+
+            {/* Notifications Popover */}
+            <div className="relative">
+              <button
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="relative p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+              >
+                <Bell className="w-4 h-4" />
+                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-400" />
+              </button>
+              {showNotifications && (
+                <div className="absolute right-0 top-11 z-50 w-72 bg-[#1e293b] border border-slate-700 rounded-xl shadow-2xl p-3 text-xs">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-700">
+                    <span className="font-semibold text-slate-200">System Audit Notifications</span>
+                    <button onClick={() => setShowNotifications(false)} className="text-slate-400 hover:text-white">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {notifications.map((n) => (
+                      <div key={n.id} className="p-2 rounded bg-slate-800/80 border border-slate-700/50">
+                        <div className="text-slate-200 font-medium">{n.text}</div>
+                        <div className="text-[10px] text-slate-400 mt-1">{n.time}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {notifications.map((n) => (
-                    <div key={n.id} className="p-2 rounded bg-slate-800/80 border border-slate-700/50">
-                      <div className="text-slate-200 font-medium">{n.text}</div>
-                      <div className="text-[10px] text-slate-400 mt-1">{n.time}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           {/* User Avatar */}
@@ -501,7 +503,7 @@ export default function ExecutivePerformanceDashboard({
          ========================================================================= */}
       <div className="flex flex-1 min-h-[720px]">
         {/* Left Vertical Sidebar (Dark Navy #232b3b) */}
-        <nav className="w-14 bg-[#232b3b] border-r border-slate-700/60 flex flex-col items-center py-5 gap-6 select-none">
+        <nav className="w-14 bg-[#232b3b] border-r border-slate-700/60 flex flex-col items-center py-5 gap-6 select-none print-hide">
           <button
             onClick={() => setActiveView('dashboard')}
             className={`p-2.5 rounded-xl transition-all ${
@@ -556,7 +558,7 @@ export default function ExecutivePerformanceDashboard({
           {/* =========================================================================
               3. DYNAMIC FILTER BAR (Power BI-Style Cascading Context)
              ========================================================================= */}
-          <div className="bg-white dark:bg-slate-900 rounded-xl p-3.5 mb-5 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="bg-white dark:bg-slate-900 rounded-xl p-3.5 mb-5 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs print-hide">
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-1.5 text-slate-500 font-semibold uppercase tracking-wider text-[11px] mr-1">
                 <Filter className="w-3.5 h-3.5 text-emerald-500" />

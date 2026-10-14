@@ -125,29 +125,63 @@
    Executive Performance Dashboard PDF & Print Formatting
    ========================================================================== */
 @media print {
-  /* Hide non-printable UI chrome, navigation, buttons, and inputs */
-  header button,
-  nav,
-  button,
-  input,
-  select,
-  .print-hide {
+  /* Reset height and overflow across all ancestor layout containers to allow multi-page print */
+  html,
+  body,
+  #root,
+  .flex.h-screen,
+  [class*="h-screen"],
+  [class*="overflow-hidden"],
+  [class*="overflow-y-auto"],
+  [class*="overflow-auto"],
+  main {
+    height: auto !important;
+    min-height: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+    display: block !important;
+  }
+
+  /* Hide application sidebar, top app header, and print-hide elements */
+  aside,
+  header.border-b,
+  .print-hide,
+  .no-print {
     display: none !important;
   }
 
+  /* Preserve Executive Performance Dashboard styling */
   body {
-    background: #ffffff !important;
-    color: #0f172a !important;
+    background: #0b1120 !important;
+    color: #f1f5f9 !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
-  /* Force background colors and charts in print rendering */
+  /* Force background colors, charts, gradients and SVGs in print rendering */
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
+  /* Grid and card layout rules for printing */
+  .grid {
+    display: grid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .grid > div {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  svg {
+    overflow: visible !important;
+  }
+
   @page {
     size: landscape;
-    margin: 0.8cm;
+    margin: 8mm;
   }
 }

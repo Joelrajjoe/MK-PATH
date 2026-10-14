@@ -6,6 +6,7 @@ Zero mock data, zero simulated metrics, zero synthetic numbers.
 """
 from datetime import datetime, timezone
 import hashlib
+import json
 import logging
 import math
 import re
@@ -58,19 +59,24 @@ def _safe_float(val: Any, default: float = 0.0) -> float:
 def _build_date_parse_expr(date_col: str) -> str:
     """Return robust DuckDB expression to parse date/timestamp from column."""
     sc = _sanitize_col(date_col)
+    tsc = f"TRIM(CAST({sc} AS VARCHAR))"
     return (
         f"COALESCE("
-        f"TRY_STRPTIME({sc}, '%m/%d/%Y %H:%M'), "
-        f"TRY_STRPTIME({sc}, '%d/%m/%Y %H:%M'), "
-        f"TRY_STRPTIME({sc}, '%Y-%m-%d %H:%M:%S'), "
-        f"TRY_STRPTIME({sc}, '%m/%d/%Y'), "
-        f"TRY_STRPTIME({sc}, '%d/%m/%Y'), "
-        f"TRY_STRPTIME({sc}, '%Y-%m-%d'), "
-        f"TRY_STRPTIME({sc}, '%d-%m-%Y'), "
-        f"TRY_STRPTIME({sc}, '%Y/%m/%d'), "
-        f"TRY_STRPTIME({sc}, '%b %d, %Y'), "
-        f"TRY_STRPTIME({sc}, '%d %b %Y'), "
-        f"TRY_CAST({sc} AS TIMESTAMP)"
+        f"TRY_STRPTIME({tsc}, '%B %d, %Y'), "
+        f"TRY_STRPTIME({tsc}, '%b %d, %Y'), "
+        f"TRY_STRPTIME({tsc}, '%B %d %Y'), "
+        f"TRY_STRPTIME({tsc}, '%d %B %Y'), "
+        f"TRY_STRPTIME({tsc}, '%d %b %Y'), "
+        f"TRY_STRPTIME({tsc}, '%m/%d/%Y %H:%M'), "
+        f"TRY_STRPTIME({tsc}, '%d/%m/%Y %H:%M'), "
+        f"TRY_STRPTIME({tsc}, '%Y-%m-%d %H:%M:%S'), "
+        f"TRY_STRPTIME({tsc}, '%m/%d/%Y'), "
+        f"TRY_STRPTIME({tsc}, '%d/%m/%Y'), "
+        f"TRY_STRPTIME({tsc}, '%Y-%m-%d'), "
+        f"TRY_STRPTIME({tsc}, '%d-%m-%Y'), "
+        f"TRY_STRPTIME({tsc}, '%Y/%m/%d'), "
+        f"TRY_CAST({tsc} AS TIMESTAMP), "
+        f"TRY_CAST({tsc} AS DATE)"
         f")"
     )
 
@@ -359,19 +365,21 @@ def compute_dashboard_analytics(
     # CARD 1: Quarter-to-Quarter / Overall Performance Change
     # -------------------------------------------------------------------------
     card1 = Card1QuarterToQuarter()
-    card1.title = "All teams - quarter-to-quarter"
 
     # Define primary event measure expression:
     # If target_col (e.g. accident_occurred = 'Yes'), use that. Else if primary_num, sum it. Else count(*).
     if target_col:
         metric_expr = f"SUM(CASE WHEN CAST({_sanitize_col(target_col)} AS VARCHAR) IN ('Yes', '1', 'True', 'true', 'Y') THEN 1.0 ELSE 0.0 END)"
-        card1.metric_label = "(QTD Events)"
+        card1.metric_label = f"(QTD {target_col.replace('_', ' ').title()})"
+        card1.title = f"{target_col.replace('_', ' ').title()} - Quarter-to-Quarter"
     elif primary_num:
         metric_expr = f"SUM(CAST({_sanitize_col(primary_num)} AS DOUBLE))"
         card1.metric_label = f"(QTD {primary_num.replace('_', ' ').title()})"
+        card1.title = f"{primary_num.replace('_', ' ').title()} - Quarter-to-Quarter"
     else:
         metric_expr = "COUNT(*)"
-        card1.metric_label = "(QTD Volume)"
+        card1.metric_label = f"(QTD Volume)"
+        card1.title = f"{primary_cat.replace('_', ' ').title()} Volume - Quarter-to-Quarter"
 
     # Compute QoQ if date exists, or sequential halves if not
     has_temporal = False
@@ -455,11 +463,19 @@ def compute_dashboard_analytics(
             ))
 
     # -------------------------------------------------------------------------
-    # CARD 2: Year-over-Year / Product Team Change
+    # CARD 2: Year-over-Year / Product Dimension Change
     # -------------------------------------------------------------------------
     card2 = Card2YearOverYear()
     card2.selected_team = primary_cat.replace("_", " ").title()
-    card2.title = f"{card2.selected_team} - year-over-year"
+    if primary_num:
+        card2.title = f"{primary_num.replace('_', ' ').title()} - Year-over-Year"
+        card2.metric_label = f"(YoY {primary_num.replace('_', ' ').title()})"
+    elif target_col:
+        card2.title = f"{target_col.replace('_', ' ').title()} - Year-over-Year"
+        card2.metric_label = f"(YoY {target_col.replace('_', ' ').title()})"
+    else:
+        card2.title = f"{card2.selected_team} Velocity - Year-over-Year"
+        card2.metric_label = f"(YoY {card2.selected_team})"
 
     if date_col and has_temporal and len(q_df["yr"].unique()) >= 2:
         yr_agg = q_df.groupby("yr")["m_val"].sum().reset_index()
@@ -494,11 +510,23 @@ def compute_dashboard_analytics(
                 ))
 
     # -------------------------------------------------------------------------
-    # CARD 3: Top and Bottom 3 Teams / Categories — Percentage of Goals (YTD)
+    # CARD 3: Top and Bottom 3 Categories — Proportion / Target Breakdown
     # -------------------------------------------------------------------------
+    dim_display = primary_cat.replace("_", " ").title()
+    if target_col:
+        card3_title = f"Top and bottom 3 {primary_cat.replace('_', ' ')}s - {target_col.replace('_', ' ')} compliance"
+        card3_basis = f"Event rate of {target_col.replace('_', ' ')}"
+    elif primary_num:
+        card3_title = f"Top and bottom 3 {primary_cat.replace('_', ' ')}s - by {primary_num.replace('_', ' ')}"
+        card3_basis = f"Proportion of total {primary_num.replace('_', ' ')}"
+    else:
+        card3_title = f"Top and bottom 3 {primary_cat.replace('_', ' ')}s - Volume Share (YTD)"
+        card3_basis = f"Proportion of {primary_cat.replace('_', ' ')} volume"
+
     card3 = Card3TopBottomTeams(
-        primary_dimension=primary_cat.replace("_", " ").title(),
-        title=f"Top and bottom 3 {primary_cat.replace('_', ' ')}s - percentage of goals (YTD)"
+        primary_dimension=dim_display,
+        title=card3_title,
+        calculation_basis=card3_basis
     )
 
     group_rows = conn.execute(f"""
@@ -555,14 +583,23 @@ def compute_dashboard_analytics(
             ))
 
     # -------------------------------------------------------------------------
-    # CARD 4: Quarterly Team Performance (Combo Bar + Line Chart)
+    # -------------------------------------------------------------------------
+    # CARD 4: Quarterly Performance / Trend (Combo Bar + Line Chart)
     # -------------------------------------------------------------------------
     card4 = Card4QuarterlyPerformance()
     distinct_cats = [r[0] for r in group_rows[:5]] if group_rows else ["General"]
     card4.available_tabs = distinct_cats
     active_tab = filter_ctx.team if (filter_ctx and filter_ctx.team and filter_ctx.team in distinct_cats) else distinct_cats[0]
     card4.active_tab = active_tab
-    card4.title = f"Quarterly performance - {active_tab} (percentage of goal)"
+    if target_col:
+        card4.title = f"Quarterly {target_col.replace('_', ' ')} - {active_tab}"
+        card4.legend_label = target_col.replace('_', ' ').title()
+    elif primary_num:
+        card4.title = f"Quarterly {primary_num.replace('_', ' ')} - {active_tab}"
+        card4.legend_label = primary_num.replace('_', ' ').title()
+    else:
+        card4.title = f"Quarterly volume - {active_tab}"
+        card4.legend_label = f"{active_tab} Count"
 
     # Query quarterly series for active tab
     tab_escaped = active_tab.replace("'", "''")
@@ -625,13 +662,12 @@ def compute_dashboard_analytics(
             ))
 
     # -------------------------------------------------------------------------
-    # CARD 5: Meetings Attended / Engagement Rate by Team (Donut Gauge)
+    # CARD 5: Category Breakdown / Engagement / Volume Share (Donut Gauge)
     # -------------------------------------------------------------------------
     card5 = Card5MeetingsAttended()
     card5.available_tabs = distinct_cats[:3]
     active_gauge1_tab = active_tab if active_tab in card5.available_tabs else (card5.available_tabs[0] if card5.available_tabs else "All")
     card5.active_tab = active_gauge1_tab
-    card5.title = f"Meetings attended by {primary_cat.replace('_', ' ')} (QTD)"
 
     # Compute actual attendance rate / within-category event rate from data
     g1_escaped = active_gauge1_tab.replace("'", "''")
@@ -643,40 +679,50 @@ def compute_dashboard_analytics(
         WHERE {filter_sql} AND COALESCE(NULLIF(CAST({_sanitize_col(primary_cat)} AS VARCHAR), ''), 'Unknown') = '{g1_escaped}'
     """, filter_params).fetchone()
 
-    denom1 = _safe_float(g1_stats[0]) if (g1_stats and g1_stats[0]) else 1.0
+    denom1 = _safe_float(g1_stats[0]) if (g1_stats and g1_stats[0]) else 0.0
     num1 = _safe_float(g1_stats[1]) if (g1_stats and g1_stats[1]) else 0.0
 
     if target_col:
-        rate1 = (num1 / denom1) * 100.0 if denom1 > 0 else 50.0
+        card5.title = f"{active_gauge1_tab} - {target_col.replace('_', ' ').title()} Rate (QTD)"
+        card5.center_label = "Rate"
+        rate1 = (num1 / denom1) * 100.0 if denom1 > 0 else 0.0
         card5.percentage = round(min(100.0, max(0.0, rate1)), 1)
-        card5.metric_description = f"{card5.percentage:.1f}% event rate ({int(num1)} of {int(denom1)} records)"
+        card5.metric_description = f"{card5.percentage:.1f}% positive {target_col.replace('_', ' ')} ({int(num1):,} of {int(denom1):,} records)"
     elif primary_num:
-        avg_per_record = num1 / denom1 if denom1 > 0 else 1.0
-        card5.percentage = round(min(100.0, max(10.0, min(95.0, avg_per_record * 10.0 if avg_per_record < 10 else 78.5))), 1)
-        card5.metric_description = f"{card5.percentage:.0f}% operational benchmark for {active_gauge1_tab}"
+        card5.title = f"{active_gauge1_tab} - {primary_num.replace('_', ' ').title()} Share (QTD)"
+        card5.center_label = "Share"
+        tot_num_res = conn.execute(f'SELECT {metric_expr} FROM "{v_name}" WHERE {filter_sql}', filter_params).fetchone()
+        tot_num = _safe_float(tot_num_res[0]) if (tot_num_res and tot_num_res[0]) else 1.0
+        share1 = (num1 / max(1.0, tot_num)) * 100.0
+        card5.percentage = round(min(100.0, max(0.0, share1)), 1)
+        card5.metric_description = f"{card5.percentage:.1f}% of total {primary_num.replace('_', ' ')}"
     else:
-        card5.percentage = 75.0
-        card5.metric_description = f"Volume benchmark for {active_gauge1_tab}"
+        card5.title = f"{active_gauge1_tab} Share of {primary_cat.replace('_', ' ').title()} (QTD)"
+        card5.center_label = "Share"
+        share1 = (denom1 / max(1.0, float(filtered_records))) * 100.0
+        card5.percentage = round(min(100.0, max(0.0, share1)), 1)
+        card5.metric_description = f"{card5.percentage:.1f}% of catalog ({int(denom1):,} of {int(filtered_records):,} records)"
 
-    card5.numerator = num1
-    card5.denominator = denom1
-    card5.center_label = "Attended"
+    card5.numerator = num1 if (target_col or primary_num) else denom1
+    card5.denominator = denom1 if (target_col or primary_num) else float(filtered_records)
 
     # -------------------------------------------------------------------------
-    # CARD 6: Location / Geographic Benchmark (Donut Gauge)
+    # CARD 6: Secondary Dimension / Geographic Performance (Donut Gauge)
     # -------------------------------------------------------------------------
     card6 = Card6EngineeringPerformance()
     loc_rows = conn.execute(f"""
-        SELECT DISTINCT COALESCE(NULLIF(CAST({_sanitize_col(secondary_cat)} AS VARCHAR), ''), 'General')
+        SELECT COALESCE(NULLIF(CAST({_sanitize_col(secondary_cat)} AS VARCHAR), ''), 'General') as loc_val,
+               COUNT(*) as loc_cnt
         FROM "{v_name}"
         WHERE {filter_sql} AND {_sanitize_col(secondary_cat)} IS NOT NULL
+        GROUP BY 1
+        ORDER BY 2 DESC
         LIMIT 5
     """, filter_params).fetchall()
     distinct_locs = [r[0] for r in loc_rows] if loc_rows else ["General"]
     card6.available_tabs = distinct_locs
     active_loc = filter_ctx.location if (filter_ctx and filter_ctx.location and filter_ctx.location in distinct_locs) else distinct_locs[0]
     card6.active_tab = active_loc
-    card6.title = f"{secondary_cat.replace('_', ' ').title()} performance (QTD)"
 
     loc_escaped = active_loc.replace("'", "''")
     loc_stats = conn.execute(f"""
@@ -687,21 +733,35 @@ def compute_dashboard_analytics(
         WHERE {filter_sql} AND COALESCE(NULLIF(CAST({_sanitize_col(secondary_cat)} AS VARCHAR), ''), 'General') = '{loc_escaped}'
     """, filter_params).fetchone()
 
-    denom2 = _safe_float(loc_stats[0]) if (loc_stats and loc_stats[0]) else 1.0
+    denom2 = _safe_float(loc_stats[0]) if (loc_stats and loc_stats[0]) else 0.0
     num2 = _safe_float(loc_stats[1]) if (loc_stats and loc_stats[1]) else 0.0
 
     if target_col:
-        rate2 = (num2 / denom2) * 100.0 if denom2 > 0 else 50.0
+        card6.title = f"{secondary_cat.replace('_', ' ').title()} - {target_col.replace('_', ' ').title()} Rate (QTD)"
+        card6.center_label = "Rate"
+        rate2 = (num2 / denom2) * 100.0 if denom2 > 0 else 0.0
         card6.percentage = round(min(100.0, max(0.0, rate2)), 1)
-        card6.benchmark_comparison = f"Target compliance in {active_loc}: {card6.percentage:.1f}% ({int(num2)} / {int(denom2)})"
+        card6.benchmark_comparison = f"Event rate in {active_loc}: {card6.percentage:.1f}% ({int(num2):,} of {int(denom2):,})"
+        card6.numerator = num2
+        card6.denominator = denom2
+    elif primary_num:
+        card6.title = f"{secondary_cat.replace('_', ' ').title()} - {primary_num.replace('_', ' ').title()} Contribution (QTD)"
+        card6.center_label = "Share"
+        tot_num_res = conn.execute(f'SELECT {metric_expr} FROM "{v_name}" WHERE {filter_sql}', filter_params).fetchone()
+        tot_num = _safe_float(tot_num_res[0]) if (tot_num_res and tot_num_res[0]) else 1.0
+        loc_share = (num2 / max(1.0, tot_num)) * 100.0
+        card6.percentage = round(min(100.0, max(0.0, loc_share)), 1)
+        card6.benchmark_comparison = f"Contribution from {active_loc}: {card6.percentage:.1f}%"
+        card6.numerator = num2
+        card6.denominator = tot_num
     else:
-        loc_share = (num2 / max(1.0, float(total_records))) * 100.0
-        card6.percentage = round(min(99.0, max(15.0, loc_share * 1.5 if loc_share < 50 else loc_share)), 1)
-        card6.benchmark_comparison = f"Benchmark score for {active_loc}: {card6.percentage:.0f}%"
-
-    card6.numerator = num2
-    card6.denominator = denom2
-    card6.center_label = "On target"
+        card6.title = f"{secondary_cat.replace('_', ' ').title()} Concentration (QTD)"
+        card6.center_label = "Share"
+        loc_share = (denom2 / max(1.0, float(filtered_records))) * 100.0
+        card6.percentage = round(min(100.0, max(0.0, loc_share)), 1)
+        card6.benchmark_comparison = f"Distribution in {active_loc}: {card6.percentage:.1f}% ({int(denom2):,} records)"
+        card6.numerator = denom2
+        card6.denominator = float(filtered_records)
 
     # -------------------------------------------------------------------------
     # Complete Payload Assembly
@@ -836,8 +896,8 @@ def get_drilldown_records(req: DrilldownRequest) -> DrilldownResponse:
     ).df()
 
     columns = list(df.columns)
-    # Convert numpy types to JSON serializable objects
-    rows = df.fillna("").to_dict(orient="records")
+    # Convert numpy types and timestamps to JSON serializable objects
+    rows = json.loads(df.fillna("").to_json(orient="records", date_format="iso"))
 
     return DrilldownResponse(
         card_id=req.card_id,

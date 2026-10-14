@@ -38,13 +38,13 @@ Before implementation, an exhaustive audit was conducted and documented in `docs
   - Dark Navy Vertical Navigation Sidebar (`#232b3b`) supporting Dashboard, Reports, Audit, and Settings views.
   - Crisp White Cards with Slate Headers (`#475569` / `#5f7185`) and `···` contextual action menus.
   - Dynamic cascading filter controls (Year, Quarter, Team, Location, Search, Reset).
-  - 6 Data-Driven Cards:
-    1. Card 1: All teams - quarter-to-quarter (+35% QoQ, monthly sparkline).
-    2. Card 2: Leading team - year-over-year (-26% YoY, yearly sparkline).
-    3. Card 3: Top and bottom 3 teams - percentage of goals (YTD, green/red progress bars).
-    4. Card 4: Quarterly team performance (tabbed combo bar + line chart with interactive drilldown).
-    5. Card 5: Meetings attended / Engagement rate (tabbed circular radial donut gauge, 34.3%).
-    6. Card 6: Location performance benchmark (tabbed circular radial donut gauge, 81.2%).
+  - 6 Universal Data-Driven Schema-Adaptive Cards:
+    1. Card 1: Dynamic dimension and temporal change (`{dim} - Quarter-to-Quarter` with quarterly trajectory and monthly sparkline).
+    2. Card 2: Primary categorical velocity comparison (`{dim} Velocity - Year-over-Year` with yearly change delta and sparkline).
+    3. Card 3: Top and bottom 3 categories - volume share (`Top and bottom 3 {cat}s - Volume Share (YTD)` with proportional progress bars).
+    4. Card 4: Granular volume breakdown (`Quarterly volume - {tab}` combo bar + trend line with interactive drilldown).
+    5. Card 5: Category share gauge (`{tab} Share of {primary_cat} (QTD)` circular radial donut gauge, dynamic center label `"Share"`, actual count and percentage).
+    6. Card 6: Secondary attribute concentration (`{cat} Concentration (QTD)` circular radial donut gauge with top 5 categories sorted by frequency).
   - Independent SQL Verification Drawer & Interactive Underlying Record Drilldown Drawer.
   - Dedicated "Executive Dashboard" tab mounted in `ProjectWorkspace.tsx` (`/projects/:projectId/dashboard`).
 

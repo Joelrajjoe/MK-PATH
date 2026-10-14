@@ -24,6 +24,35 @@ def _require_db() -> None:
         raise HTTPException(status_code=503, detail={"code": "METADATA_UNAVAILABLE", "message": "Metadata store unavailable."})
 
 
+def _serialize_for_mongo(obj: Any) -> Any:
+    """Recursively convert arbitrary objects (Pydantic models, datetimes, numpy types) to BSON-safe primitives."""
+    if obj is None:
+        return None
+    if hasattr(obj, "model_dump") and callable(getattr(obj, "model_dump")):
+        return _serialize_for_mongo(obj.model_dump())
+    if hasattr(obj, "dict") and callable(getattr(obj, "dict")):
+        return _serialize_for_mongo(obj.dict())
+    if isinstance(obj, dict):
+        return {str(k): _serialize_for_mongo(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [_serialize_for_mongo(item) for item in obj]
+    if hasattr(obj, "isoformat") and callable(getattr(obj, "isoformat")):
+        return obj.isoformat()
+    if hasattr(obj, "item") and callable(getattr(obj, "item")):
+        # Handles numpy scalar types (int64, float64, etc.)
+        try:
+            return _serialize_for_mongo(obj.item())
+        except Exception:
+            pass
+    if hasattr(obj, "tolist") and callable(getattr(obj, "tolist")):
+        # Handles numpy arrays
+        try:
+            return _serialize_for_mongo(obj.tolist())
+        except Exception:
+            pass
+    return obj
+
+
 @router.post("/execute", status_code=201)
 async def execute_run(req: ExecuteRunRequest) -> Dict[str, Any]:
     _require_db()
@@ -56,11 +85,12 @@ async def execute_run(req: ExecuteRunRequest) -> Dict[str, Any]:
             "created_at": utcnow().isoformat(),
         }
         
+        safe_doc = _serialize_for_mongo(doc)
         coll = db_manager.get_collection("runs")
         if coll is not None:
-            await coll.insert_one(dict(doc))
+            await coll.insert_one(dict(safe_doc))
             
-        return doc
+        return safe_doc
     except Exception as exc:
         logger.error(f"Run execution failed: {exc}")
         raise HTTPException(status_code=500, detail=f"Run execution failed: {type(exc).__name__}: {exc}")
