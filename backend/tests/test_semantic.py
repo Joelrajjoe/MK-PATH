@@ -58,6 +58,13 @@ def _mongo():
     return cli[settings.MONGODB_DATABASE]
 
 
+@pytest.fixture(autouse=True)
+def _force_null_provider(monkeypatch):
+    """Enforce documented test contract: unit tests run deterministic-only with NullProvider."""
+    import app.semantic.llm as s_llm
+    monkeypatch.setattr(s_llm, "_provider", s_llm.NullProvider())
+
+
 # ---------------------------------------------------------------------------
 # Core flow: coded-column ambiguity interrupts, user decision resolves
 # ---------------------------------------------------------------------------
@@ -82,13 +89,24 @@ def test_coded_column_interrupts_and_user_decision_resolves(client, upload_fn):
     assert q["allows_free_text"] is True
 
     # clarification question persisted in MongoDB
+    import time
     mdb = _mongo()
-    qdoc = mdb.clarification_questions.find_one({"question_id": q["question_id"]}, {"_id": 0})
+    qdoc = None
+    for _ in range(10):
+        qdoc = mdb.clarification_questions.find_one({"question_id": q["question_id"]}, {"_id": 0})
+        if qdoc:
+            break
+        time.sleep(0.2)
     assert qdoc is not None
     assert qdoc["status"] == "open"
     assert qdoc["dataset_id"] == ds_id
     # ontology document persisted with all required SemanticContext fields
-    ctx_doc = mdb.ontology.find_one({"dataset_id": ds_id}, {"_id": 0})
+    ctx_doc = None
+    for _ in range(10):
+        ctx_doc = mdb.ontology.find_one({"dataset_id": ds_id}, {"_id": 0})
+        if ctx_doc:
+            break
+        time.sleep(0.2)
     assert ctx_doc is not None
     for field in (
         "dataset_id", "business_goal", "column_definitions", "business_terms",
@@ -172,6 +190,7 @@ def test_no_business_goal_penalty(upload_fn, client):
 
 def test_llm_unavailable_warning_recorded(upload_fn, client, monkeypatch):
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "")
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "")
     from app.semantic import llm
     monkeypatch.setattr(llm, "_provider", None)
     ds_id = _ingest_and_profile(client, upload_fn, "orders_llm.csv", ORDERS_CSV)

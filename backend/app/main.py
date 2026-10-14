@@ -21,6 +21,8 @@ from .routers import semantic as semantic_router
 from .routers import runs as runs_router
 from .routers import projects as projects_router
 from .routers import pipeline as pipeline_router
+from .routers import stability as stability_router
+from .routers import dashboard as dashboard_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("mkpath.main")
@@ -72,6 +74,8 @@ app.include_router(datasets_router.router)
 app.include_router(semantic_router.router)
 app.include_router(runs_router.router)
 app.include_router(pipeline_router.router)
+app.include_router(stability_router.router)
+app.include_router(dashboard_router.router)
 
 
 @app.get("/")

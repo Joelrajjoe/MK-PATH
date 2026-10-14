@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,7 +19,8 @@ import {
   CheckCircle2,
   Table,
   Target,
-  ArrowRight
+  ArrowRight,
+  GitFork
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import DataVisualizer from '@/components/visualization/DataVisualizer'
@@ -38,6 +39,7 @@ interface AnalysisTemplate {
 export default function DataAnalystWorkspace() {
   const { projectId } = useParams<{ projectId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const initialDatasetId = searchParams.get('datasetId')
 
   const [query, setQuery] = useState('')
@@ -275,6 +277,14 @@ export default function DataAnalystWorkspace() {
             Execute deterministic analytical plans via DuckDB, extract empirical conclusions, generate strategic decision-making statements, and explore all 18 visualization charts.
           </p>
         </div>
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-2 border-indigo-500/30 text-indigo-600 bg-indigo-500/5 hover:bg-indigo-500/10 shrink-0 font-bold"
+          onClick={() => navigate(`/projects/${projectId}/verification/stability`)}
+        >
+          <GitFork className="h-4 w-4" /> Multiverse Stability Gate (PMSG) &rarr;
+        </Button>
       </div>
 
       {/* Dataset Provenance Status Banner */}
@@ -329,6 +339,8 @@ export default function DataAnalystWorkspace() {
         <ExecutivePerformanceDashboard
           data={vizData}
           columns={schemaData?.columns?.map((c: any) => (typeof c === 'string' ? c : c.name)) || []}
+          datasetId={selectedDatasetId}
+          projectId={projectId}
           datasetName={selectedDataset?.name || (datasets.length > 0 ? selectedDatasetId : '')}
           title={selectedDataset?.name ? `${selectedDataset.name} — Performance Management` : 'Executive Performance Management'}
         />

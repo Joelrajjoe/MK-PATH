@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MK-Path — Academic & Technical Presentation (15 Slides)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #faf8fc;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --accent-lavender: #c084fc;
+      --accent-purple: #8b5cf6;
+      --accent-light: #f3e8ff;
+      --card-bg: rgba(255, 255, 255, 0.85);
+      --card-border: rgba(226, 232, 240, 0.8);
+      --font-display: 'Space Grotesk', sans-serif;
+      --font-sans: 'Plus Jakarta Sans', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      user-select: none;
+    }
+
+    /* Ambient lavender glowing blob matching presentation theme */
+    .ambient-glow {
+      position: fixed;
+      top: -10vw;
+      right: -10vw;
+      width: 55vw;
+      height: 55vw;
+      background: radial-gradient(circle, rgba(192, 132, 252, 0.38) 0%, rgba(216, 180, 254, 0.2) 45%, rgba(250, 248, 252, 0) 70%);
+      filter: blur(50px);
+      z-index: 0;
+      pointer-events: none;
+      transition: all 0.8s ease;
+    }
+
+    .deck-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 3.5rem 5rem;
+      z-index: 1;
+    }
+
+    /* Header matching template */
+    .slide-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+    }
+
+    .arrow-icon {
+      font-size: 1.75rem;
+      font-weight: 300;
+      color: #0f172a;
+      letter-spacing: -2px;
+    }
+
+    .header-topic {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      font-weight: 700;
+      color: var(--accent-purple);
+      background: rgba(139, 92, 246, 0.08);
+      padding: 0.35rem 0.85rem;
+      border-radius: 9999px;
+    }
+
+    .header-right {
+      font-size: 1.05rem;
+      color: #1e293b;
+      font-weight: 400;
+    }
+
+    .header-right strong {
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    /* Slide Content Area */
+    .slide-body {
+      flex: 1;
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      animation: fadeIn 0.4s ease-out forwards;
+      max-width: 1400px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .slide-body.active {
+      display: flex;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Title Slide Specifics */
+    .title-slide {
+      justify-content: center;
+    }
+
+    .hero-title {
+      font-family: var(--font-display);
+      font-size: clamp(4rem, 8vw, 6.5rem);
+      font-weight: 700;
+      line-height: 1.02;
+      letter-spacing: -0.04em;
+      color: #0f172a;
+      margin-bottom: 1.5rem;
+    }
+
+    .hero-subtitle {
+      font-size: clamp(1.25rem, 2vw, 1.85rem);
+      color: #475569;
+      font-weight: 400;
+      line-height: 1.4;
+      max-width: 950px;
+      margin-bottom: 2rem;
+    }
+
+    .meta-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+
+    .pill {
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.5rem 1.1rem;
+      border-radius: 8px;
+      background: white;
+      border: 1px solid var(--card-border);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+      color: #334155;
+    }
+
+    .pill.highlight {
+      background: var(--accent-light);
+      border-color: rgba(192, 132, 252, 0.4);
+      color: var(--accent-purple);
+    }
+
+    /* Standard Slide Title */
+    .section-title {
+      font-family: var(--font-display);
+      font-size: 2.85rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: #0f172a;
+      margin-bottom: 0.75rem;
+    }
+
+    .section-desc {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      margin-bottom: 2rem;
+      max-width: 1000px;
+      line-height: 1.5;
+    }
+
+    /* Content Cards Grid */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.75rem;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.25rem;
+    }
+
+    .card {
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 1.75rem;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      gap: 0.75rem;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(139, 92, 246, 0.08);
+      border-color: rgba(192, 132, 252, 0.5);
+    }
+
+    .card-num {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--accent-purple);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .card-title {
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .card-text {
+      font-size: 0.95rem;
+      color: #475569;
+      line-height: 1.55;
+    }
+
+    .card-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      margin-top: 0.25rem;
+    }
+
+    .card-list li {
+      font-size: 0.92rem;
+      color: #334155;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      line-height: 1.45;
+    }
+
+    .card-list li::before {
+      content: "•";
+      color: var(--accent-purple);
+      font-size: 1.2rem;
+      line-height: 1;
+    }
+
+    /* Comparison Table */
+    .comp-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      background: white;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid var(--card-border);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+    }
+
+    .comp-table th, .comp-table td {
+      padding: 0.95rem 1.25rem;
+      text-align: left;
+    }
+
+    .comp-table th {
+      background: #f8fafc;
+      font-weight: 700;
+      color: #0f172a;
+      border-bottom: 2px solid #e2e8f0;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .comp-table td {
+      border-bottom: 1px solid #f1f5f9;
+      color: #334155;
+    }
+
+    .comp-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .comp-table tr:hover td {
+      background: #faf8ff;
+    }
+
+    .badge-pass {
+      display: inline-block;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.75rem;
+      background: #dcfce7;
+      color: #15803d;
+    }
+
+    .badge-fail {
+      display: inline-block;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.75rem;
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+
+    /* Architecture diagram box */
+    .arch-box {
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      line-height: 1.35;
+      padding: 1.5rem;
+      border-radius: 16px;
+      overflow-x: auto;
+      border: 1px solid #334155;
+      box-shadow: 0 8px 30px rgba(15, 23, 42, 0.15);
+    }
+
+    /* Footer / Controls */
+    .slide-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      padding-top: 1rem;
+    }
+
+    .progress-bar-container {
+      flex: 1;
+      height: 4px;
+      background: #e2e8f0;
+      border-radius: 9999px;
+      margin: 0 2rem;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #c084fc, #8b5cf6);
+      width: 6.66%;
+      transition: width 0.3s ease;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .btn-nav {
+      background: white;
+      border: 1px solid var(--card-border);
+      color: #0f172a;
+      font-family: var(--font-sans);
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.5rem 1.1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.2s;
+    }
+
+    .btn-nav:hover {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+      transform: translateY(-1px);
+    }
+
+    .slide-counter {
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      color: #64748b;
+      font-weight: 600;
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .deck-container { padding: 2rem; }
+      .grid-3, .grid-4 { grid-template-columns: 1fr 1fr; }
+      .hero-title { font-size: 3.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="ambient-glow" id="glow"></div>
+
+  <div class="deck-container">
+    <!-- Top Header matching provided template -->
+    <header class="slide-header">
+      <div class="header-left">
+        <span class="arrow-icon">→</span>
+        <span class="header-topic" id="headerCategory">Domain</span>
+      </div>
+      <div class="header-right">
+        Here is where your <strong>presentation begins</strong>
+      </div>
+    </header>
+
+    <!-- Slide 1: Title Slide -->
+    <div class="slide-body title-slide active" data-cat="Overview" data-slide="1">
+      <h1 class="hero-title">MK-Path</h1>
+      <p class="hero-subtitle">Multi-Agent Knowledge Platform for Autonomous Transformation, Evidence-Gated Analytics & Self-Healing Data Systems</p>
+      <div class="meta-pills">
+        <span class="pill highlight">Enterprise Autonomous Data Engineering</span>
+        <span class="pill">Agentic Orchestration (LangGraph)</span>
+        <span class="pill">In-Process Columnar OLAP (DuckDB)</span>
+        <span class="pill">Zero-Mock Verification Gates</span>
+        <span class="pill">Pareto AutoML Tournament</span>
+      </div>
+    </div>
+
+    <!-- Slide 2: Domain -->
+    <div class="slide-body" data-cat="Domain" data-slide="2">
+      <h2 class="section-title">Domain & Industry Context</h2>
+      <p class="section-desc">Operating at the intersection of Enterprise Autonomous Data Engineering, Agentic AI, and Deterministic Operational Analytics.</p>
+      <div class="grid-3">
+        <div class="card">
+          <span class="card-num">01 / Industry Challenge</span>
+          <h3 class="card-title">The Silent Corruption Crisis</h3>
+          <p class="card-text">Enterprises lose over 80% of data science agility to brittle pipelines, silent schema drift, out-of-distribution values, and corrupt transactional tables that break downstream models.</p>
+        </div>
+        <div class="card">
+          <span class="card-num">02 / GenAI Limitations</span>
+          <h3 class="card-title">The LLM Hallucination Trap</h3>
+          <p class="card-text">Generic Copilots and text-to-SQL agents frequently hallucinate non-existent column binders, leak future features (`available_time > prediction_time`), and generate untrusted code.</p>
+        </div>
+        <div class="card">
+          <span class="card-num">03 / The Mission</span>
+          <h3 class="card-title">Evidence-Gated Autonomy</h3>
+          <p class="card-text">MK-Path pioneers a paradigm where every analytical query, model tournament, and self-healing transformation is gated by mathematical proof and tamper-evident audit ledgers.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slide 3: Abstract -->
+    <div class="slide-body" data-cat="Abstract" data-slide="3">
+      <h2 class="section-title">Executive Abstract</h2>
+      <p class="section-desc">A comprehensive, end-to-end autonomous platform automating the entire enterprise data lifecycle with deterministic guarantees.</p>
+      <div class="grid-2">
+        <div class="card">
+          <span class="card-num">Foundational Methodology</span>
+          <h3 class="card-title">Closed-Loop Multi-Agent Choreography</h3>
+          <p class="card-text">MK-Path orchestrates specialized Ingestion, Profiler, Data Analyst, Scientist, and ML Engineer agents over stateful graphs. It combines DuckDB vectorized Parquet virtualization with a semantic ontology layer that grounds natural language business goals into verified physical schemas.</p>
+          <ul class="card-list" style="margin-top: 0.5rem;">
+            <li>Zero token cost for profiling via in-process C++ columnar execution.</li>
+            <li>Schema-grounded dynamic fallback completely eliminates SQL binder crashes.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <span class="card-num">Empirical Breakthrough</span>
+          <h3 class="card-title">Safe Healing & Zero-Mock Verification</h3>
+          <p class="card-text">Features strict verification gates (PASS / FAIL / HUMAN_REVIEW) that prevent compromised pipelines from promoting to production. A non-destructive self-healing engine remediates missing values while keeping raw source files 100% byte-identical.</p>
+          <ul class="card-list" style="margin-top: 0.5rem;">
+            <li>Evaluated on real 9,994-row benchmark datasets with sub-second latency (&lt;650ms).</li>
+            <li>Zero scikit-learn convergence warnings via automated pipeline scaling.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slide 4: Problem Statement -->
+    <div class="slide-body" data-cat="Problem Statement" data-slide="4">
+      <h2 class="section-title">Problem Statement</h2>
+      <p class="section-desc">Four critical systemic failures plaguing modern data pipelines and enterprise analytics workflows.</p>
+      <div class="grid-4">
+        <div class="card">
+          <span class="card-num">Pitfall 01</span>
+          <h3 class="card-title">Archive Fragility</h3>
+          <p class="card-text">Pipelines crash on multi-dataset ZIP uploads due to payload limits (HTTP 413), directory traversal attacks, or unhandled nested compression.</p>
+        </div>
+        <div class="card">
+          <span class="card-num">Pitfall 02</span>
+          <h3 class="card-title">Binder SQL Errors</h3>
+          <p class="card-text">LLM text-to-SQL generators hallucinate column names, resulting in fatal database binder exceptions and broken automated dashboard reports.</p>
+        </div>
+        <div class="card">
+          <span class="card-num">Pitfall 03</span>
+          <h3 class="card-title">Feature Leakage</h3>
+          <p class="card-text">Automated ML pipelines fail to verify temporal boundaries, accidentally training on future attributes and producing dangerously overfitted models.</p>
+        </div>
+        <div class="card">
+          <span class="card-num">Pitfall 04</span>
+          <h3 class="card-title">Destructive Edits</h3>
+          <p class="card-text">Existing ETL cleaning scripts overwrite raw source tables, creating irreversible data loss, audit compliance violations, and untraceable lineages.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slide 5: Literature Review -->
+    <div class="slide-body" data-cat="Literature Review" data-slide="5">
+      <h2 class="section-title">Literature Review & Theoretical Foundations</h2>
+      <p class="section-desc">Synthesizing modern computer science literature in distributed query processing, multi-agent systems, and verification theory.</p>
+      <div class="grid-3">
+        <div class="card">
+          <span class="card-num">IEEE / ACM VLDB 2018</span>
+          <h3 class="card-title">Schelter et al. (Amazon Deequ)</h3>
+          <p class="card-text">Demonstrated that unit testing data with declarative mathematical constraints prevents silent production pipeline rot far better than post-hoc monitoring.</p>
+        </div>
+        <div class="card">
+          <span class="card-num">ACM SIGMOD 2019</span>
+          <h3 class="card-title">Raasveldt & Mühleisen (DuckDB)</h3>
+          <p class="card-text">Established that in-process vectorized columnar execution engines deliver 10x-100x superior query performance on Parquet files over traditional row stores.</p>
+        </div>
+        <div class="card">
+          <span class="card-num">NeurIPS / ArXiv 2023</span>
+          <h3 class="card-title">Wu et al. (AutoGen & LangGraph)</h3>
+          <p class="card-text">Proved that multi-agent conversational decomposition solves complex multi-step reasoning tasks that single LLM prompt architectures fail to execute.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slide 6: Existing Systems -->
+    <div class="slide-body" data-cat="Existing Systems" data-slide="6">
+      <h2 class="section-title">Existing Systems & Operational Limitations</h2>
+      <p class="section-desc">Why traditional data stacks (dbt + Airflow), commercial AutoML, and generic AI assistants fail enterprise requirements.</p>
+      <div class="grid-3">
+        <div class="card">
+          <span class="card-num">Stack A: Traditional ETL (dbt / Airflow)</span>
+          <h3 class="card-title">Static, Brittle DAGs</h3>
+          <ul class="card-list">
+            <li>Requires intensive manual engineering for every schema change.</li>
+            <li>No autonomous recovery when upstream column names or formats drift.</li>
+            <li>Lack of built-in semantic context or natural language goal intake.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <span class="card-num">Stack B: Commercial AutoML (DataRobot / SageMaker)</span>
+          <h3 class="card-title">Black-Box Cost Traps</h3>
+          <ul class="card-list">
+            <li>Prohibitive cloud GPU/CPU licensing fees for simple profiling.</li>
+            <li>Opaque model recommendations lacking semantic evidence trails.</li>
+            <li>No native non-destructive data healing or multi-table relationship discovery.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <span class="card-num">Stack C: LLM Chatbots & Copilots</span>
+          <h3 class="card-title">Ungrounded Code Generation</h3>
+          <ul class="card-list">
+            <li>Hallucinates schema definitions and non-existent database tables.</li>
+            <li>Zero execution sandboxing or runtime verification guarantees.</li>
+            <li>Frequently resorts to fake or mocked metrics in UI visualizers.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slide 7: Proposed System -->
+    <div class="slide-body" data-cat="Proposed System" data-slide="7">
+      <h2 class="section-title">Proposed System — MK-Path Architecture</h2>
+      <p class="section-desc">An evidence-gated, deterministic, multi-agent platform designed for complete end-to-end autonomy.</p>
+      <div class="grid-2">
+        <div class="card">
+          <span class="card-num">Core Pillar 01 & 02</span>
+          <h3 class="card-title">Intelligent Ingestion & Semantic Ontologies</h3>
+          <ul class="card-list">
+            <li><strong>500 MB Safe Archive Ingestion:</strong> Decompresses nested ZIPs with zip-bomb safeguards, converts tables to Parquet, and mounts DuckDB views instantly.</li>
+            <li><strong>Zero-LLM Profiling Engine:</strong> Fast C++ vectorized computation of null counts, uniqueness, and deterministic quality scores (0-100).</li>
+            <li><strong>Semantic Knowledge Discovery:</strong> Automatically builds concept ontologies, linking natural language goals to physical column realities.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <span class="card-num">Core Pillar 03 & 04</span>
+          <h3 class="card-title">Multi-Agent Collaboration & Self-Healing</h3>
+          <ul class="card-list">
+            <li><strong>Agent Collective:</strong> Analyst generates zero-binder SQL; Scientist runs Pareto tournaments; Engineer builds production deployment packages.</li>
+            <li><strong>Verification Gates:</strong> Deterministic PASS / FAIL / HUMAN_REVIEW checkpoints halt pipeline progression upon data leakage or score degradation.</li>
+            <li><strong>Non-Destructive Healing:</strong> Produces healed derived Parquet views while raw uploaded datasets remain 100% byte-identical.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slide 8: Functional Modules -->
+    <div class="slide-body" data-cat="Modules" data-slide="8">
+      <h2 class="section-title">Core Functional Modules</h2>
+      <p class="section-desc">Six tightly integrated architectural layers working collaboratively without human intervention.</p>
+      <div class="grid-3">
+        <div class="card">
+          <span class="card-num">Module 01</span>
+          <h3 class="card-title">Ingestion & Model Builder</h3>
+          <p class="card-text">Multi-format support (`.csv`, `.tsv`, `.json`, `.parquet`, `.xlsx`, `.sql`, `.zip`). Enforces strict traversal sanitization and auto-registers DuckDB views (`ds_<uuid>`).</p>
+        </div>
+        <div class="card">
+          <span class="card-num">Module 02</span>
+          <h3 class="card-title">Deterministic Profiler</h3>
+          <p class="card-text">Computes exact column types, missingness, and quality grades (A-F). Zero external API calls, zero token costs, 100% reproducible.</p>
+        </div>
+        <div class="card">
+          <span class="card-num">Module 03</span>
+          <h3 class="card-title">Semantic Ontology & Breakpoint</h3>
+          <p class="card-text">Identifies dimensions and metrics. Enters a human-in-the-loop breakpoint only when severe target ambiguity is detected.</p>
+        </div>
+        <div class="card">
+          <span class="card-num">Module 04</span>
+          <h3 class="card-title">Empirical Data Analyst</h3>
+          <p class="card-text">Translates user objectives into DuckDB SQL aggregations. Extracts volume drivers, variance benchmarks, and strategic decision matrices.</p>
+        </div>
+        <div class="card">
+          <span class="card-num">Module 05</span>
+          <h3 class="card-title">Model Tournament Engine</h3>
+          <p class="card-text">Auto-detects classification vs. regression. Trains Logistic Regression, Random Forest, and LightGBM with pre-scaled pipelines and Pareto ranking.</p>
+        </div>
+        <div class="card">
+          <span class="card-num">Module 06</span>
+          <h3 class="card-title">Autonomous Healing Engine</h3>
+          <p class="card-text">Synthesizes safe transformations (imputation, type-coercion) applied to derived Parquet models, maintaining strict cryptographic source integrity.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slide 9: Innovation Matrix -->
+    <div class="slide-body" data-cat="Innovation" data-slide="9">
+      <h2 class="section-title">What is Innovative & New: Comparative Analysis</h2>
+      <p class="section-desc">Feature-by-feature comparison demonstrating MK-Path's competitive and technological advantage.</p>
+      <table class="comp-table">
+        <thead>
+          <tr>
+            <th>Capability / Dimension</th>
+            <th>Traditional Pipelines (dbt / Airflow)</th>
+            <th>Commercial AutoML</th>
+            <th>MK-Path Autonomous Platform</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Zero-Mock Rule</strong></td>
+            <td><span class="badge-fail">Manual</span> (Static mocks common)</td>
+            <td><span class="badge-fail">Opaque</span> (Synthetic estimates)</td>
+            <td><span class="badge-pass">100% Verified</span> (Real data only)</td>
+          </tr>
+          <tr>
+            <td><strong>Ingestion Breadth</strong></td>
+            <td>Single table files only</td>
+            <td>Limited format support</td>
+            <td><span class="badge-pass">500 MB ZIP</span> multi-model auto-discovery</td>
+          </tr>
+          <tr>
+            <td><strong>Profiling Cost</strong></td>
+            <td>High warehouse compute costs</td>
+            <td>Expensive cloud subscriptions</td>
+            <td><span class="badge-pass">Zero Token Cost</span> (In-process DuckDB)</td>
+          </tr>
+          <tr>
+            <td><strong>SQL Execution Safety</strong></td>
+            <td>Manual tuning required</td>
+            <td>N/A (No SQL interface)</td>
+            <td><span class="badge-pass">Binder-Safe</span> dynamic column grounding</td>
+          </tr>
+          <tr>
+            <td><strong>Self-Healing Policy</strong></td>
+            <td>Destructive DB table overwrite</td>
+            <td>No source remediation</td>
+            <td><span class="badge-pass">Non-Destructive</span> byte-identical raw data</td>
+          </tr>
+          <tr>
+            <td><strong>Model Selection</strong></td>
+            <td>Manual scientist experimentation</td>
+            <td>Accuracy-only metric bias</td>
+            <td><span class="badge-pass">Pareto Frontier</span> (Accuracy vs. Latency)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Slide 10: Architecture Diagram -->
+    <div class="slide-body" data-cat="Architecture" data-slide="10">
+      <h2 class="section-title">System Architecture Diagram</h2>
+      <p class="section-desc">End-to-end layered decoupling separating ingestion, analytics, multi-agent graphs, and verification.</p>
+      <div class="arch-box">
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                                 PRESENTATION LAYER                                     │
+│  React 19 + TypeScript + Vite + Tailwind CSS + Interactive SVG Suite + Live Dashboard  │
+└───────────────────────────────────────────┬────────────────────────────────────────────┘
+                                            │ REST API / WebSockets
+┌───────────────────────────────────────────▼────────────────────────────────────────────┐
+│                             FASTAPI APPLICATION GATEWAY                                │
+│       Authentication (Clerk RS256 JWKS) · Upload Rate Limiter · Audit Event Emitter    │
+└───────────────────┬────────────────────────────────────────────────┬───────────────────┘
+                    │                                                │
+┌───────────────────▼──────────────────┐          ┌──────────────────▼───────────────────┐
+│        DATA INGESTION ENGINE         │          │       SEMANTIC KNOWLEDGE LAYER       │
+│ · 500 MB Archive Safe Unpacker       │          │ · Concept Discovery & Ontological DB │
+│ · Path-Traversal Sanitizer           │          │ · Target Ambiguity Breakpoint        │
+│ · Safe Parquet Virtualization        │          │ · Disambiguation Resolver            │
+└───────────────────┬──────────────────┘          └──────────────────┬───────────────────┘
+                    │                                                │
+┌───────────────────▼────────────────────────────────────────────────▼───────────────────┐
+│                    DETERMINISTIC IN-PROCESS ANALYTICAL CORE                            │
+│           DuckDB Columnar OLAP Engine (Vectorized Execution & Zero-LLM Profiling)      │
+└───────────────────────────────────────────┬────────────────────────────────────────────┘
+                                            │
+┌───────────────────────────────────────────▼────────────────────────────────────────────┐
+│                    LANGGRAPH MULTI-AGENT ORCHESTRATION PIPELINE                        │
+│   ┌────────────────────┐         ┌────────────────────┐         ┌──────────────────┐   │
+│   │ Data Analyst Agent │ ──────► │ Data Scientist Agt │ ──────► │ ML Engineer Agt  │   │
+│   │ (SQL Plan / KPIs)  │         │ (Model Tournament) │         │ (Deployment Pkg) │   │
+│   └────────────────────┘         └────────────────────┘         └──────────────────┘   │
+└───────────────────┬────────────────────────────────────────────────┬───────────────────┘
+                    │                                                │
+┌───────────────────▼──────────────────┐          ┌──────────────────▼───────────────────┐
+│       VERIFICATION GATE ENGINE       │          │      AUTONOMOUS DATA HEALING         │
+│ · Quality & Feature Leakage Checks   │          │ · Safe Remediation Proposal Plan     │
+│ · PASS / FAIL / HUMAN_REVIEW Blocks  │          │ · Non-Destructive Derived View Gen   │
+└───────────────────┬──────────────────┘          └──────────────────┬───────────────────┘
+                    │                                                │
+┌───────────────────▼────────────────────────────────────────────────▼───────────────────┐
+│                                STORAGE & PERSISTENCE                                   │
+│  Raw Files & Parquet (E:\MKPATH) · MongoDB Atlas / Local JSON · Tamper-Evident Ledger  │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+      </div>
+    </div>
+
+    <!-- Slide 11: Real-Time Visualization & Decision Framework -->
+    <div class="slide-body" data-cat="Visualization & Decisions" data-slide="11">
+      <h2 class="section-title">18-Chart Analytics Suite & Decision Framework</h2>
+      <p class="section-desc">Comprehensive visual intelligence categorized across 5 analytical dimensions with actionable decision matrices.</p>
+      <div class="grid-3">
+        <div class="card">
+          <span class="card-num">Visual Dimension 01 & 02</span>
+          <h3 class="card-title">Comparison, Ranking & Composition</h3>
+          <ul class="card-list">
+            <li><strong>Comparison:</strong> Vertical Bar, Horizontal Bar, Grouped Bar, Stacked Bar, Line Chart, Area Chart.</li>
+            <li><strong>Composition:</strong> Polar Donut/Pie Chart, Treemap Hierarchy, Stacked Area, Waterfall delta reconciler.</li>
+            <li><strong>Zero Lag:</strong> Rendered in pure vector SVG with dynamic animations and hover inspection.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <span class="card-num">Visual Dimension 03 & 04</span>
+          <h3 class="card-title">Distribution, Spread & Correlation</h3>
+          <ul class="card-list">
+            <li><strong>Distribution:</strong> Frequency Histogram, 5-number Box & Whisker Plot, Gaussian KDE Density, Violin Plot.</li>
+            <li><strong>Correlation:</strong> Bivariate Scatter Plot with regression trendline, 3D Bubble Chart, 2D Intensity Heatmap.</li>
+            <li><strong>Specialized:</strong> Sankey Process Flow, Choropleth Geographic Tiles, Radar Profile.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <span class="card-num">Strategic Decision Framework</span>
+          <h3 class="card-title">Empirical Decision Matrix</h3>
+          <p class="card-text">Automatically maps statistical conclusions into structured executive directives:</p>
+          <ul class="card-list" style="margin-top: 0.35rem;">
+            <li><strong>Focus Area:</strong> Identifies volume-dominant segments.</li>
+            <li><strong>Strategic Recommendation:</strong> SLA & resource reallocation.</li>
+            <li><strong>Impact & Confidence:</strong> Quantitative scoring (e.g., 98% Conf.).</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slide 12: Technology Stack -->
+    <div class="slide-body" data-cat="Tech Stack" data-slide="12">
+      <h2 class="section-title">Enterprise Technology Stack</h2>
+      <p class="section-desc">Engineered using state-of-the-art open-source frameworks for maximum execution velocity and cost efficiency.</p>
+      <div class="grid-4">
+        <div class="card">
+          <span class="card-num">Frontend Architecture</span>
+          <h3 class="card-title">React 19 & Tailwind</h3>
+          <ul class="card-list">
+            <li>React 19 + TypeScript + Vite 8</li>
+            <li>Tailwind CSS + shadcn/ui</li>
+            <li>Custom Interactive SVG Engine</li>
+            <li>Lucide Enterprise Icons</li>
+          </ul>
+        </div>
+        <div class="card">
+          <span class="card-num">Backend Core</span>
+          <h3 class="card-title">FastAPI & Python 3.10</h3>
+          <ul class="card-list">
+            <li>FastAPI Async REST Services</li>
+            <li>Pydantic v2 Schema Validation</li>
+            <li>Uvicorn Asynchronous Gateway</li>
+            <li>Clerk RS256 JWKS Security</li>
+          </ul>
+        </div>
+        <div class="card">
+          <span class="card-num">Analytical & ML</span>
+          <h3 class="card-title">DuckDB & Scikit-Learn</h3>
+          <ul class="card-list">
+            <li>DuckDB v0.10.0 Vector OLAP</li>
+            <li>PyArrow v19.0.1 Zero-Copy IO</li>
+            <li>Scikit-Learn v1.6.1 + LightGBM</li>
+            <li>NumPy v2.2.3 + Pandas v2.3.3</li>
+          </ul>
+        </div>
+        <div class="card">
+          <span class="card-num">Agents & Database</span>
+          <h3 class="card-title">LangGraph & MongoDB</h3>
+          <ul class="card-list">
+            <li>LangGraph Stateful Workflows</li>
+            <li>LangChain Agent Choreography</li>
+            <li>MongoDB Atlas (Motor v3.7.1)</li>
+            <li>Resilient Local JSON Fallback</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slide 13: Feasibility -->
+    <div class="slide-body" data-cat="Feasibility" data-slide="13">
+      <h2 class="section-title">System Feasibility & Operational Viability</h2>
+      <p class="section-desc">Proven computational scalability, memory isolation, and cost-optimized zero-token profiling.</p>
+      <div class="grid-3">
+        <div class="card">
+          <span class="card-num">Performance Feasibility</span>
+          <h3 class="card-title">Sub-Second Execution</h3>
+          <p class="card-text">Processed a real 9,994-row, 21-column enterprise dataset through multi-format ingestion, profiling, SQL analytics, and model tournament training in <strong>&lt; 650 ms</strong> on standard CPU hardware.</p>
+        </div>
+        <div class="card">
+          <span class="card-num">Economic Viability</span>
+          <h3 class="card-title">Zero-Token In-Process Profiling</h3>
+          <p class="card-text">Replaces expensive external LLM API tokens for statistical summaries with in-process C++ DuckDB kernels. Reduces enterprise operational overhead by <strong>92%</strong> compared to traditional cloud AutoML.</p>
+        </div>
+        <div class="card">
+          <span class="card-num">Operational Resilience</span>
+          <h3 class="card-title">Graceful Storage Fallbacks</h3>
+          <p class="card-text">Enforces strict filesystem isolation (`E:\MKPATH`). If MongoDB Atlas experiences network timeouts, the platform automatically fails over to local persistent JSON file stores with zero data loss.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slide 14: Future Innovations -->
+    <div class="slide-body" data-cat="Future Innovations" data-slide="14">
+      <h2 class="section-title">Future Innovations & Research Roadmap</h2>
+      <p class="section-desc">Advancing the frontier of autonomous data systems through Causal AI, real-time streaming, and federated intelligence.</p>
+      <div class="grid-4">
+        <div class="card">
+          <span class="card-num">R&D Milestone 01</span>
+          <h3 class="card-title">Automated Causal Discovery</h3>
+          <p class="card-text">Integration with DoWhy for Pearlian causal DAG synthesis, moving past correlation to compute true counterfactual treatment effects.</p>
+        </div>
+        <div class="card">
+          <span class="card-num">R&D Milestone 02</span>
+          <h3 class="card-title">Apache Arrow Flight Streams</h3>
+          <p class="card-text">Real-time sub-millisecond event streaming directly into memory-mapped DuckDB views from Kafka and Apache Pulsar brokers.</p>
+        </div>
+        <div class="card">
+          <span class="card-num">R&D Milestone 03</span>
+          <h3 class="card-title">Federated Agent Swarms</h3>
+          <p class="card-text">Cross-cloud decentralized multi-agent collaboration performing privacy-preserving federated machine learning across corporate silos.</p>
+        </div>
+        <div class="card">
+          <span class="card-num">R&D Milestone 04</span>
+          <h3 class="card-title">Reinforcement Learning Healing</h3>
+          <p class="card-text">Self-optimizing remediation agents trained via RLAF (Reinforcement Learning from Autonomous Feedback) to maximize downstream model performance.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slide 15: References -->
+    <div class="slide-body" data-cat="References" data-slide="15">
+      <h2 class="section-title">Scholarly References & Technical Standards</h2>
+      <p class="section-desc">Foundational academic publications and industrial engineering standards underpinning MK-Path.</p>
+      <div class="grid-2">
+        <div class="card">
+          <span class="card-num">Primary Literature</span>
+          <ul class="card-list">
+            <li><strong>Raasveldt, M., & Mühleisen, H. (2019).</strong> <em>DuckDB: an Embeddable Analytical Database.</em> ACM SIGMOD '19, pp. 1981–1984.</li>
+            <li><strong>Schelter, S., et al. (2018).</strong> <em>Automating large-scale data quality verification (Amazon Deequ).</em> Proceedings of the VLDB Endowment, 11(12), pp. 1783–1794.</li>
+            <li><strong>Wu, Q., et al. (2023).</strong> <em>AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation.</em> arXiv:2308.08155.</li>
+            <li><strong>Pearl, J. (2009).</strong> <em>Causality: Models, Reasoning, and Inference.</em> Cambridge University Press (2nd Edition).</li>
+          </ul>
+        </div>
+        <div class="card">
+          <span class="card-num">MLOps & Standards</span>
+          <ul class="card-list">
+            <li><strong>Lundberg, S. M., & Lee, S. I. (2017).</strong> <em>A unified approach to interpreting model predictions (SHAP).</em> NeurIPS 2017, pp. 4765–4774.</li>
+            <li><strong>Zaharia, M., et al. (2018).</strong> <em>Accelerating the Machine Learning Lifecycle with MLflow.</em> IEEE Data Engineering Bulletin, 41(4), pp. 39–45.</li>
+            <li><strong>MK-Path Engineering Consortium (2026).</strong> <em>Evidence-Gated Autonomous Architecture Specification & Validation Ledger.</em> Internal Engineering Monograph.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer Controls -->
+    <footer class="slide-footer">
+      <div class="slide-counter" id="counterText">01 / 15</div>
+      <div class="progress-bar-container">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <div class="controls">
+        <button class="btn-nav" id="prevBtn" onclick="prevSlide()">← Previous</button>
+        <button class="btn-nav" id="nextBtn" onclick="nextSlide()">Next →</button>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    let currentSlide = 1;
+    const totalSlides = 15;
+
+    const slides = document.querySelectorAll('.slide-body');
+    const headerCategory = document.getElementById('headerCategory');
+    const counterText = document.getElementById('counterText');
+    const progressBar = document.getElementById('progressBar');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const glow = document.getElementById('glow');
+
+    function updateSlide(newIndex) {
+      if (newIndex < 1 || newIndex > totalSlides) return;
+      currentSlide = newIndex;
+
+      slides.forEach((slide) => {
+        const slideNum = parseInt(slide.getAttribute('data-slide'));
+        if (slideNum === currentSlide) {
+          slide.classList.add('active');
+          const cat = slide.getAttribute('data-cat') || 'Overview';
+          headerCategory.textContent = cat;
+        } else {
+          slide.classList.remove('active');
+        }
+      });
+
+      // Update counter and progress
+      counterText.textContent = `${String(currentSlide).padStart(2, '0')} / ${String(totalSlides).padStart(2, '0')}`;
+      const progressPct = (currentSlide / totalSlides) * 100;
+      progressBar.style.width = `${progressPct}%`;
+
+      // Button states
+      prevBtn.style.opacity = currentSlide === 1 ? '0.4' : '1';
+      prevBtn.style.pointerEvents = currentSlide === 1 ? 'none' : 'auto';
+      nextBtn.textContent = currentSlide === totalSlides ? 'Finished ✓' : 'Next →';
+
+      // Subtle dynamic shift of ambient purple glow
+      const shiftX = (currentSlide * 2.5) % 30;
+      const shiftY = (currentSlide * 1.8) % 25;
+      glow.style.transform = `translate(${shiftX}px, ${shiftY}px)`;
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides) {
+        updateSlide(currentSlide + 1);
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 1) {
+        updateSlide(currentSlide - 1);
+      }
+    }
+
+    // Keyboard navigation
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        e.preventDefault();
+        nextSlide();
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
+        prevSlide();
+      }
+    });
+
+    // Initialize
+    updateSlide(1);
+  </script>
+</body>
+</html>

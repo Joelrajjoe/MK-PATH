@@ -33,6 +33,7 @@ CORE_COLLECTIONS: List[str] = [
     "artifacts",
     "audit_events",
     "healing_events",
+    "pmsg_runs",
 ]
 
 # Indexes are created ONLY where justified by a concrete query pattern:
@@ -40,6 +41,7 @@ CORE_COLLECTIONS: List[str] = [
 # - agent_runs: agent run listings are read in reverse chronological order.
 # - ontology: semantic contexts are always fetched by dataset (latest first).
 # - clarification_questions: open questions are polled per dataset and status.
+# - pmsg_runs: robustness analysis runs indexed by project, dataset, and creation time.
 # All other collections are write-first with no established read pattern yet,
 # so no indexes are created (indexes cost write throughput and storage).
 JUSTIFIED_INDEXES: Dict[str, List[Any]] = {
@@ -47,6 +49,7 @@ JUSTIFIED_INDEXES: Dict[str, List[Any]] = {
     "agent_runs": [("created_at", -1)],
     "ontology": [("dataset_id", 1), ("created_at", -1)],
     "clarification_questions": [("dataset_id", 1), ("status", 1), ("created_at", -1)],
+    "pmsg_runs": [("project_id", 1), ("dataset_id", 1), ("created_at", -1)],
 }
 
 
@@ -314,6 +317,7 @@ class DatabaseManager:
                 pass
             self._client = None
         self._db = self._fallback_db
+        self._using_fallback = True
 
     def get_database(self) -> Any:
         """Database accessor; returns Atlas PyMongo DB or LocalFallbackDB."""
@@ -324,8 +328,8 @@ class DatabaseManager:
         if name not in CORE_COLLECTIONS:
             logger.warning("Access to non-declared collection '%s' blocked", name)
             return None
-        if self._db is not None:
-            return self._db[name] if not self._using_fallback else self._fallback_db.get_collection(name)
+        if self._db is not None and not self._using_fallback and not isinstance(self._db, LocalFallbackDB):
+            return self._db[name]
         return self._fallback_db.get_collection(name)
 
     async def ensure_collections(self) -> Dict[str, Any]:

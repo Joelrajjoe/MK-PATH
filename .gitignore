@@ -23,3 +23,6 @@ __pycache__/
 # Node (if frontend added later)
 node_modules/
 dist/
+
+# Scratch & temporary workspace files
+scratch/

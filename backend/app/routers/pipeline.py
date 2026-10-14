@@ -230,10 +230,31 @@ async def get_verification_gates(
     run_id: str = Query("run_1"),
     quality_score: float = Query(100.0)
 ) -> Dict[str, Any]:
-    report = run_verification_gates(project_id, run_id, {
+    ctx: Dict[str, Any] = {
         "data_quality_score": quality_score,
         "temporal_leakage_risk": "LOW"
-    })
+    }
+    
+    # Query latest PMSG run for this project if available
+    try:
+        from ..stability.service import list_stability_runs
+        recent_pmsg = await list_stability_runs(project_id=project_id, limit=1)
+        if recent_pmsg:
+            latest_run = recent_pmsg[0]
+            dec = latest_run.get("gate_decision", {})
+            metrics = latest_run.get("stability_metrics", {})
+            ctx["pmsg_status"] = dec.get("overall_status")
+            ctx["pmsg_reason"] = dec.get("summary")
+            ctx["pmsg_metrics"] = {
+                "top_category_persistence": metrics.get("top_category_persistence"),
+                "spearman_rank_correlation": metrics.get("spearman_rank_correlation"),
+                "conclusion_reversal_rate": metrics.get("conclusion_reversal_rate"),
+                "coverage_ratio": metrics.get("coverage_ratio"),
+            }
+    except Exception as exc:
+        logger.debug("Could not attach PMSG run to verification gates: %s", exc)
+
+    report = run_verification_gates(project_id, run_id, ctx)
     return report.model_dump()
 
 

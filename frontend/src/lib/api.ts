@@ -384,5 +384,130 @@ export const api = {
       if (!res.ok) return { events: [] };
       return await res.json();
     }
+  },
+  stability: {
+    getPolicies: async (): Promise<any> => {
+      const res = await fetch(`${API_BASE}/stability/policies`);
+      if (!res.ok) throw new Error('Failed to fetch stability policies');
+      return await res.json();
+    },
+    proposePlan: async (datasetId: string, projectId: string, businessGoal?: string): Promise<any> => {
+      const res = await fetch(`${API_BASE}/stability/plan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataset_id: datasetId, project_id: projectId, business_goal: businessGoal }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to propose analysis plan');
+      }
+      return await res.json();
+    },
+    previewVariants: async (datasetId: string, plan: any, maxVariants = 15): Promise<any> => {
+      const res = await fetch(`${API_BASE}/stability/variants/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataset_id: datasetId, plan, max_variants: maxVariants }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to preview variants');
+      }
+      return await res.json();
+    },
+    run: async (datasetId: string, projectId: string, plan?: any, policyId = 'PMSG-POLICY-v1.0'): Promise<any> => {
+      const res = await fetch(`${API_BASE}/stability/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataset_id: datasetId, project_id: projectId, plan, policy_id: policyId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Multiverse stability execution failed');
+      }
+      return await res.json();
+    },
+    getRun: async (runId: string): Promise<any> => {
+      const res = await fetch(`${API_BASE}/stability/runs/${runId}`);
+      if (!res.ok) throw new Error('Run not found');
+      return await res.json();
+    },
+    listRuns: async (projectId?: string, datasetId?: string): Promise<any> => {
+      let url = `${API_BASE}/stability/runs?limit=20`;
+      if (projectId) url += `&project_id=${projectId}`;
+      if (datasetId) url += `&dataset_id=${datasetId}`;
+      const res = await fetch(url);
+      if (!res.ok) return { runs: [], total: 0 };
+      return await res.json();
+    },
+    compare: async (runIdA: string, runIdB: string): Promise<any> => {
+      const res = await fetch(`${API_BASE}/stability/compare`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ run_id_a: runIdA, run_id_b: runIdB }),
+      });
+      if (!res.ok) throw new Error('Failed to compare runs');
+      return await res.json();
+    }
+  },
+  dashboard: {
+    analytics: async (datasetId: string, projectId = 'default', filterContext?: any): Promise<any> => {
+      const res = await fetch(`${API_BASE}/dashboard/analytics`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataset_id: datasetId, project_id: projectId, filter_context: filterContext }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to fetch dashboard analytics');
+      }
+      return await res.json();
+    },
+    filters: async (datasetId: string): Promise<any> => {
+      const res = await fetch(`${API_BASE}/dashboard/filters?dataset_id=${datasetId}`);
+      if (!res.ok) throw new Error('Failed to fetch filter dimensions');
+      return await res.json();
+    },
+    drilldown: async (datasetId: string, cardId: string, categoryTab?: string, locationTab?: string, filterContext?: any, page = 1, pageSize = 20): Promise<any> => {
+      const res = await fetch(`${API_BASE}/dashboard/drilldown`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dataset_id: datasetId,
+          card_id: cardId,
+          category_tab: categoryTab,
+          location_tab: locationTab,
+          filter_context: filterContext,
+          page,
+          page_size: pageSize,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to fetch drilldown records');
+      }
+      return await res.json();
+    },
+    verify: async (datasetId: string, projectId = 'default', filterContext?: any): Promise<any> => {
+      const res = await fetch(`${API_BASE}/dashboard/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataset_id: datasetId, project_id: projectId, filter_context: filterContext }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to verify analytics');
+      }
+      return await res.json();
+    },
+    exportReport: async (datasetId: string, format = 'csv', filterContext?: any): Promise<Blob> => {
+      const res = await fetch(`${API_BASE}/dashboard/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataset_id: datasetId, format, filter_context: filterContext }),
+      });
+      if (!res.ok) throw new Error('Export failed');
+      return await res.blob();
+    },
   }
 };

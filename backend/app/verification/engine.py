@@ -69,10 +69,41 @@ def run_verification_gates(project_id: str, run_id: str, context: Dict[str, Any]
         timestamp=datetime.now(timezone.utc).isoformat()
     ))
 
-    # 4. Causal Validation Gate
-    # 5. Explainability Gate
-    # 6. Fairness Gate
-    # 7. Performance Gate
+    # 4. Plan-Multiverse Stability Gate (PMSG)
+    pmsg_status = context.get("pmsg_status")
+    pmsg_metrics = context.get("pmsg_metrics", {})
+    pmsg_reason = context.get("pmsg_reason")
+    if pmsg_status in ("PASS", "WARNING", "FAIL", "HUMAN_REVIEW"):
+        gate_pmsg_status = pmsg_status
+        evidence_list = [
+            f"Stability Gate: {pmsg_status}",
+            f"Persistence: {pmsg_metrics.get('top_category_persistence', 'N/A')}",
+            f"Spearman Rho: {pmsg_metrics.get('spearman_rank_correlation', 'N/A')}",
+            f"Reversal Rate: {pmsg_metrics.get('conclusion_reversal_rate', 'N/A')}",
+        ]
+        reason_txt = pmsg_reason or ("All predefined stability conditions passed" if pmsg_status == "PASS" else "Sensitivity or reversal detected across analytical variants")
+        rec_txt = "Proceed with deployment." if pmsg_status == "PASS" else ("Examine sensitive variants before high-stakes deployment." if pmsg_status == "WARNING" else "Resolve analytical instability before deployment.")
+    else:
+        gate_pmsg_status = "WARNING"
+        evidence_list = ["No PMSG run executed yet for this project finding"]
+        reason_txt = "Analytical stability has not yet been demonstrated across alternative specifications"
+        rec_txt = "Execute the Plan-Multiverse Stability Gate before production deployment."
+
+    results.append(GateResult(
+        gate_id="plan_multiverse_stability",
+        status=gate_pmsg_status,
+        severity="CRITICAL",
+        evidence=evidence_list,
+        metrics=pmsg_metrics,
+        threshold=0.80,
+        reason=reason_txt,
+        recommendation=rec_txt,
+        timestamp=datetime.now(timezone.utc).isoformat()
+    ))
+
+    # 5. Causal Validation Gate
+    # 6. Explainability Gate
+    # 7. Fairness Gate
     # 8. Artifact Validation Gate
 
     # Deployment logic

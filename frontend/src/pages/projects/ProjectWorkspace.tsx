@@ -10,9 +10,11 @@ import TemporalLeakage from './verification/TemporalLeakage'
 import CausalAnalysis from './analysis/CausalAnalysis'
 import ModelTournament from './models/ModelTournament'
 import VerificationCenter from './verification/VerificationCenter'
+import PlanMultiverseStabilityGate from '@/components/verification/PlanMultiverseStabilityGate'
 import HealingUI from './healing/HealingUI'
 import ArtifactCenter from './artifacts/ArtifactCenter'
 import AuditUI from './audit/AuditUI'
+import ExecutivePerformanceDashboard from '@/components/visualization/ExecutivePerformanceDashboard'
 
 export default function ProjectWorkspace() {
   const { projectId } = useParams<{ projectId: string }>()
@@ -34,6 +36,7 @@ export default function ProjectWorkspace() {
       <Tabs value={activeTab} onValueChange={(val) => navigate(`/projects/${projectId}/${val}`)} className="flex-1 flex flex-col">
         <TabsList className="w-fit flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="dashboard">Executive Dashboard</TabsTrigger>
           <TabsTrigger value="data">Data</TabsTrigger>
           <TabsTrigger value="knowledge">Knowledge</TabsTrigger>
           <TabsTrigger value="agents">Agents</TabsTrigger>
@@ -50,6 +53,12 @@ export default function ProjectWorkspace() {
             <ProjectOverview
               projectId={projectId!}
               onNavigateTab={(tab) => navigate(`/projects/${projectId}/${tab}`)}
+            />
+          </TabsContent>
+
+          <TabsContent value="dashboard" className="h-full">
+            <ExecutivePerformanceDashboard
+              projectId={projectId!}
             />
           </TabsContent>
 
@@ -70,7 +79,7 @@ export default function ProjectWorkspace() {
           </TabsContent>
 
           <TabsContent value="verification" className="h-full">
-            {pathParts[4] === 'leakage' ? <TemporalLeakage /> : <VerificationCenter />}
+            {pathParts[4] === 'leakage' ? <TemporalLeakage /> : pathParts[4] === 'stability' ? <PlanMultiverseStabilityGate projectId={projectId!} /> : <VerificationCenter />}
           </TabsContent>
 
           <TabsContent value="models" className="h-full">

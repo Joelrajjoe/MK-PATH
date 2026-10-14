@@ -271,6 +271,7 @@ export default function DatasetExplorer({ datasetId: propDatasetId }: { datasetI
             <ExecutivePerformanceDashboard
               data={previewData?.rows || []}
               columns={colNames}
+              datasetId={datasetId || dataset.id || dataset.dataset_id}
               datasetName={dataset.name || dataset.original_filename}
               onRefreshData={() => loadAllData(datasetId)}
             />
@@ -538,6 +539,7 @@ export default function DatasetExplorer({ datasetId: propDatasetId }: { datasetI
               <ExecutivePerformanceDashboard
                 data={previewData?.rows || []}
                 columns={colNames}
+                datasetId={datasetId || dataset.id || dataset.dataset_id}
                 datasetName={dataset.name || dataset.original_filename}
                 onRefreshData={() => loadAllData(datasetId)}
               />

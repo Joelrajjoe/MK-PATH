@@ -2,21 +2,30 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { AlertCircle, CheckCircle, ShieldAlert, UserCheck, Activity, ShieldCheck, Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { AlertCircle, CheckCircle, ShieldAlert, UserCheck, Activity, ShieldCheck, Loader2, GitFork } from 'lucide-react'
 import { api } from '@/lib/api'
+
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import PlanMultiverseStabilityGate from '@/components/verification/PlanMultiverseStabilityGate'
 
 export default function VerificationCenter() {
   const { projectId } = useParams<{ projectId: string }>()
+  const [activeTab, setActiveTab] = useState<'gates' | 'pmsg'>('gates')
   const [selectedGate, setSelectedGate] = useState<string | null>(null)
   const [verificationData, setVerificationData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
+  const loadVerificationData = () => {
     setLoading(true)
     api.verification.getGates(projectId || 'project_1', 'run_1')
       .then(res => setVerificationData(res))
       .catch(() => {})
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    loadVerificationData()
   }, [projectId])
 
   const getStatusIcon = (status: string) => {
@@ -54,91 +63,131 @@ export default function VerificationCenter() {
   const selectedDetails = gatesList.find((g: any) => g.gate_id === selectedGate)
 
   return (
-    <div className="space-y-6 max-w-6xl">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">MK-Path Verification Center</h2>
-        <p className="text-muted-foreground">Central evidence-gated trust and control interface for deployment readiness.</p>
+    <div className="space-y-6 max-w-7xl">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">MK-Path Verification Center</h2>
+          <p className="text-muted-foreground text-sm">Evidence-gated trust, robustness, and deployment readiness control.</p>
+        </div>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-6">
-        <div className="md:col-span-1 space-y-6">
-          <Card className={`border-2 ${overallState === 'BLOCKED' ? 'border-destructive bg-destructive/5' : 'border-emerald-500 bg-emerald-500/5'}`}>
-            <CardHeader className="pb-4">
-              <CardTitle className={`flex items-center gap-2 ${overallState === 'BLOCKED' ? 'text-destructive' : 'text-emerald-600'}`}>
-                <ShieldCheck className="h-6 w-6" /> Deployment Readiness
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-black uppercase tracking-widest">{overallState}</div>
-              {overallState === 'BLOCKED' && (
-                <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded text-xs text-destructive font-medium">
-                  {verificationData?.summary || 'Mandatory verification gates failed.'}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+      <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)} className="space-y-6">
+        <TabsList className="bg-muted/60 p-1">
+          <TabsTrigger value="gates" className="gap-2 font-semibold text-xs">
+            <ShieldCheck className="h-4 w-4" /> Deployment Readiness Gates
+          </TabsTrigger>
+          <TabsTrigger value="pmsg" className="gap-2 font-semibold text-xs">
+            <GitFork className="h-4 w-4" /> Plan-Multiverse Stability Gate (PMSG)
+          </TabsTrigger>
+        </TabsList>
 
-          {selectedDetails && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between text-base">
-                  {selectedDetails.gate_id}
-                  {getStatusIcon(selectedDetails.status)}
-                </CardTitle>
-                <CardDescription>Severity: {selectedDetails.severity}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground text-xs uppercase block font-semibold">Reason</span>
-                  <p className="font-medium">{selectedDetails.reason || 'Gate evaluated cleanly.'}</p>
-                </div>
-                {selectedDetails.metrics && (
-                  <div>
-                    <span className="text-muted-foreground text-xs uppercase block font-semibold mb-1">Metrics</span>
-                    <pre className="bg-muted p-2 rounded text-xs font-mono max-h-32 overflow-auto">
-                      {JSON.stringify(selectedDetails.metrics, null, 2)}
-                    </pre>
-                  </div>
-                )}
-                <div>
-                  <span className="text-muted-foreground text-xs uppercase block font-semibold">Recommendation</span>
-                  <p className="mt-1 text-xs text-muted-foreground">{selectedDetails.recommendation || 'No action required.'}</p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        <div className="md:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Mandatory Verification Gates ({gatesList.length})</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-3">
-                {gatesList.map((gate: any) => (
-                  <div
-                    key={gate.gate_id}
-                    className={`flex items-center justify-between p-4 border rounded-lg cursor-pointer transition-colors hover:bg-muted/50 ${selectedGate === gate.gate_id ? 'border-primary shadow-sm bg-primary/5' : ''}`}
-                    onClick={() => setSelectedGate(gate.gate_id)}
-                  >
-                    <div className="flex items-center gap-4">
-                      {getStatusIcon(gate.status)}
-                      <div>
-                        <p className="font-semibold text-sm">{gate.gate_id.replace(/_/g, ' ')}</p>
-                        <p className="text-xs text-muted-foreground">{gate.reason}</p>
-                      </div>
+        <TabsContent value="gates" className="space-y-6 mt-0">
+          <div className="grid md:grid-cols-3 gap-6">
+            <div className="md:col-span-1 space-y-6">
+              <Card className={`border-2 shadow-sm ${overallState === 'BLOCKED' ? 'border-destructive bg-destructive/5' : 'border-emerald-500 bg-emerald-500/5'}`}>
+                <CardHeader className="pb-4">
+                  <CardTitle className={`flex items-center gap-2 ${overallState === 'BLOCKED' ? 'text-destructive' : 'text-emerald-600'}`}>
+                    <ShieldCheck className="h-6 w-6" /> Deployment Readiness
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-black uppercase tracking-widest">{overallState}</div>
+                  {overallState === 'BLOCKED' && (
+                    <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded text-xs text-destructive font-medium">
+                      {verificationData?.summary || 'Mandatory verification gates failed. Deployment prohibited.'}
                     </div>
-                    <Badge variant="outline" className={`w-28 justify-center font-bold text-xs ${getBadgeClass(gate.status)}`}>
-                      {gate.status}
-                    </Badge>
+                  )}
+                  {overallState === 'READY' && (
+                    <div className="mt-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded text-xs text-emerald-700 font-medium">
+                      All critical verification criteria passed. System is verified for deployment.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {selectedDetails && (
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center justify-between text-base">
+                      {selectedDetails.gate_id.replace(/_/g, ' ')}
+                      {getStatusIcon(selectedDetails.status)}
+                    </CardTitle>
+                    <CardDescription className="text-xs">Severity: {selectedDetails.severity}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground text-xs uppercase block font-semibold">Reason</span>
+                      <p className="font-medium text-xs mt-0.5">{selectedDetails.reason || 'Gate evaluated cleanly.'}</p>
+                    </div>
+                    {selectedDetails.metrics && Object.keys(selectedDetails.metrics).length > 0 && (
+                      <div>
+                        <span className="text-muted-foreground text-xs uppercase block font-semibold mb-1">Metrics</span>
+                        <pre className="bg-muted p-2 rounded text-xs font-mono max-h-36 overflow-auto">
+                          {JSON.stringify(selectedDetails.metrics, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-muted-foreground text-xs uppercase block font-semibold">Recommendation</span>
+                      <p className="mt-1 text-xs text-muted-foreground">{selectedDetails.recommendation || 'No action required.'}</p>
+                    </div>
+                    {selectedDetails.gate_id === 'plan_multiverse_stability' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full text-xs gap-1.5"
+                        onClick={() => setActiveTab('pmsg')}
+                      >
+                        Open Multiverse Stability Workspace &rarr;
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            <div className="md:col-span-2">
+              <Card className="shadow-sm">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Mandatory Verification Gates ({gatesList.length})</CardTitle>
+                  <CardDescription className="text-xs">
+                    Deterministic verification gates required before production release. Click any gate to inspect evidence.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-3">
+                    {gatesList.map((gate: any) => (
+                      <div
+                        key={gate.gate_id}
+                        className={`flex items-center justify-between p-4 border rounded-lg cursor-pointer transition-colors hover:bg-muted/50 ${selectedGate === gate.gate_id ? 'border-primary shadow-sm bg-primary/5' : ''}`}
+                        onClick={() => setSelectedGate(gate.gate_id)}
+                      >
+                        <div className="flex items-center gap-4">
+                          {getStatusIcon(gate.status)}
+                          <div>
+                            <p className="font-semibold text-sm capitalize">{gate.gate_id.replace(/_/g, ' ')}</p>
+                            <p className="text-xs text-muted-foreground">{gate.reason}</p>
+                          </div>
+                        </div>
+                        <Badge variant="outline" className={`w-32 justify-center font-bold text-xs py-1 ${getBadgeClass(gate.status)}`}>
+                          {gate.status}
+                        </Badge>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="pmsg" className="mt-0">
+          <PlanMultiverseStabilityGate
+            projectId={projectId!}
+            onGateEvaluated={() => loadVerificationData()}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
