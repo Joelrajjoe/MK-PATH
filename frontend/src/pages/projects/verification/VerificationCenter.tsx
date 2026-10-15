@@ -8,10 +8,11 @@ import { api } from '@/lib/api'
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import PlanMultiverseStabilityGate from '@/components/verification/PlanMultiverseStabilityGate'
+import FaultInjectionBenchmarkConsole from '@/components/verification/FaultInjectionBenchmarkConsole'
 
 export default function VerificationCenter() {
   const { projectId } = useParams<{ projectId: string }>()
-  const [activeTab, setActiveTab] = useState<'gates' | 'pmsg'>('gates')
+  const [activeTab, setActiveTab] = useState<'gates' | 'pmsg' | 'benchmark'>('gates')
   const [selectedGate, setSelectedGate] = useState<string | null>(null)
   const [verificationData, setVerificationData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -134,6 +135,9 @@ export default function VerificationCenter() {
           <TabsTrigger value="pmsg" className="gap-2 font-semibold text-xs">
             <GitFork className="h-4 w-4" /> Plan-Multiverse Stability Gate (PMSG)
           </TabsTrigger>
+          <TabsTrigger value="benchmark" className="gap-2 font-semibold text-xs">
+            <ShieldAlert className="h-4 w-4" /> Fault-Injection Benchmark (FIB-VG)
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="gates" className="space-y-6 mt-0">
@@ -241,6 +245,10 @@ export default function VerificationCenter() {
             projectId={projectId!}
             onGateEvaluated={() => loadVerificationData()}
           />
+        </TabsContent>
+
+        <TabsContent value="benchmark" className="mt-0">
+          <FaultInjectionBenchmarkConsole projectId={projectId!} />
         </TabsContent>
       </Tabs>
     </div>

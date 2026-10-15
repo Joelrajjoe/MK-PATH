@@ -509,5 +509,72 @@ export const api = {
       if (!res.ok) throw new Error('Export failed');
       return await res.blob();
     },
+  },
+  verificationBenchmark: {
+    getScenarios: async (category?: string, severity?: string): Promise<any> => {
+      const params = new URLSearchParams();
+      if (category) params.append('category', category);
+      if (severity) params.append('severity', severity);
+      const res = await fetch(`${API_BASE}/verification-benchmark/scenarios?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to fetch scenario catalog');
+      return await res.json();
+    },
+    getScenarioDetail: async (scenarioId: string): Promise<any> => {
+      const res = await fetch(`${API_BASE}/verification-benchmark/scenarios/${scenarioId}`);
+      if (!res.ok) throw new Error(`Failed to fetch scenario ${scenarioId}`);
+      return await res.json();
+    },
+    executeRun: async (projectId: string, scenarioIds?: string[], category?: string, policyId?: string): Promise<any> => {
+      const res = await fetch(`${API_BASE}/verification-benchmark/runs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: projectId,
+          scenario_ids: scenarioIds,
+          category: category,
+          policy_id: policyId || 'FIB-RELEASE-POLICY-v1.0'
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Benchmark execution failed');
+      }
+      return await res.json();
+    },
+    getRun: async (runId: string): Promise<any> => {
+      const res = await fetch(`${API_BASE}/verification-benchmark/runs/${runId}`);
+      if (!res.ok) throw new Error(`Failed to fetch run ${runId}`);
+      return await res.json();
+    },
+    getResults: async (runId: string, category?: string): Promise<any> => {
+      const params = new URLSearchParams();
+      if (category) params.append('category', category);
+      const res = await fetch(`${API_BASE}/verification-benchmark/runs/${runId}/results?${params.toString()}`);
+      if (!res.ok) throw new Error(`Failed to fetch results for run ${runId}`);
+      return await res.json();
+    },
+    getHistory: async (projectId?: string, limit = 20, offset = 0): Promise<any> => {
+      const params = new URLSearchParams();
+      if (projectId) params.append('project_id', projectId);
+      params.append('limit', limit.toString());
+      params.append('offset', offset.toString());
+      const res = await fetch(`${API_BASE}/verification-benchmark/history?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to fetch benchmark history');
+      return await res.json();
+    },
+    getPolicies: async (): Promise<any> => {
+      const res = await fetch(`${API_BASE}/verification-benchmark/policies`);
+      if (!res.ok) throw new Error('Failed to fetch policies');
+      return await res.json();
+    },
+    compareRuns: async (runIdA: string, runIdB: string): Promise<any> => {
+      const res = await fetch(`${API_BASE}/verification-benchmark/compare`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ run_id_a: runIdA, run_id_b: runIdB }),
+      });
+      if (!res.ok) throw new Error('Failed to compare runs');
+      return await res.json();
+    }
   }
 };

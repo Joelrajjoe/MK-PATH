@@ -73,3 +73,30 @@ graph TD
     5. Card 5: Meetings attended / Engagement rate (tabbed circular radial donut gauge).
     6. Card 6: Location performance benchmark (tabbed circular radial donut gauge).
   - Independent SQL Verification Drawer & Interactive Underlying Record Drilldown Drawer.
+
+---
+
+## 3. Fault-Injection Benchmark for Verification Gates (FIB-VG) Architecture
+
+Option B implements an independent evaluation harness to stress-test MK-Path's verification gates, stability metrics, and deployment-blocking controls:
+
+```mermaid
+graph TD
+    A[Scenario Catalog: 42 Versioned Scenarios] --> B[Benchmark Execution Engine]
+    B --> C[Isolated Execution Context: Ephemeral Copies]
+    C --> D[Target Component Under Test: run_verification_gates]
+    D --> E[Real Observed Outputs & Deployment State]
+    E --> F[Independent Oracle Comparator]
+    F --> G[Deterministic Metrics Engine: Exact Numerator/Denominator]
+    G --> H[Release Policy Gate: Zero Critical Escapes Rule]
+    H --> I[MongoDB Atlas Persistence: fib_vg_* Collections]
+    I --> J[FastAPI Benchmark Router: /api/verification-benchmark/*]
+    J --> K[Frontend Benchmark Console: VerificationCenter.tsx Tab 3]
+```
+
+### Key Architectural Tenets:
+1. **Independent Oracle Layer**: Ground truth is specified in `backend/app/benchmark/catalog.py` completely independent of the target verification code.
+2. **Zero-Mock Policy**: Metrics represent exact mathematical computations over completed in-memory test executions. No fabricated percentages or dummy histories exist in production.
+3. **Strict Containment**: Critical verification failures directly block downstream ML model artifact generation (`generate_deployment_artifacts`).
+4. **Cloud-Native Atlas Persistence**: Runs and scenario results are committed to MongoDB Atlas (`fib_vg_runs`, `fib_vg_scenario_results`, `fib_vg_audit_events`) with write confirmation and readback integrity checks.
+

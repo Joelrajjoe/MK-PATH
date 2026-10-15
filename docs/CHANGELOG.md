@@ -4,7 +4,24 @@ All notable changes to the Executive Performance Management Dashboard and analyt
 
 ---
 
+## [2.4.0] - 2026-10-15
+
+### Added
+- **Fault-Injection Benchmark for Verification Gates (FIB-VG) Option B Implementation:**
+  - Implemented real-time evaluation framework assessing whether MK-Path verification gates correctly detect, diagnose, contain, and report injected failures.
+  - **42-Scenario Catalog (`catalog.py`):** 34 controlled fault mutations across 8 categories (Data Integrity, Analytical Correctness, Semantic Governance, Agent Orchestration, Verification Gate Bypass, Storage Persistence, API/Frontend Integrity, Audit Evidence) plus 8 clean controls.
+  - **Independent Test Oracles:** Defined immutable a priori expected outcomes completely independent of target verifiers.
+  - **Deterministic Metrics Engine (`metrics.py`):** Pure local mathematical formulas reporting exact numerators and denominators for Detection Rate (100.0%, 34/34), Clean False-Block Rate (0.0%, 0/8), Critical Escape Rate (0.0%, 0/12), Diagnosis Accuracy (100.0%, 34/34), and Audit Completeness (100.0%, 42/42).
+  - **Release Policy Gate (`policy.py`):** Versioned `FIB-RELEASE-POLICY-v1.0` enforcing zero critical escapes, 100% deployment blocking, and mandatory coverage prior to release approval.
+  - **MongoDB Atlas Integration (`service.py` & `database.py`):** Persisting runs, scenario results, and audit events to `fib_vg_runs`, `fib_vg_scenario_results`, and `fib_vg_audit_events` with write confirmation and readback verification.
+  - **FastAPI Benchmark Endpoints (`routers/benchmark.py`):** 10 endpoints mounted at `/api/verification-benchmark/*` for policy retrieval, scenario inspection, run execution, metrics extraction, audit trails, run history, and cross-run comparison.
+  - **Frontend Benchmark Console (`FaultInjectionBenchmarkConsole.tsx`):** Interactive console integrated into `VerificationCenter.tsx` with overview KPI cards, scenario explorer with category/severity filters, progress bars, real execution triggers, and modal evidence inspection.
+  - **Comprehensive Automated Test Suite (`tests/test_fib_vg.py`):** 24 test cases covering catalog integrity, exact metric math, zero denominators, real verifier execution, ML deployment artifact blocking, all 12 mandatory critical regression scenarios, and mutation testing.
+
+---
+
 ## [2.3.0] - 2026-10-14
+
 
 ### Added
 - **Universal Schema-Adaptive Dynamic Dashboard Titles & Metrics (`engine.py` & `models.py`):**

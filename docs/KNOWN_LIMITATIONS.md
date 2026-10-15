@@ -27,3 +27,20 @@ This document honestly outlines the current technical boundaries, architectural 
 ### E. Location Benchmark Dimensions
 - **Limitation:** Card 6 (Location Performance Benchmark) requires a categorical column indicating geographic locations or cohorts (e.g. `city`, `location`, `region`).
 - **Behavior:** When no geographic column is present, the engine automatically selects the secondary categorical attribute (e.g. `weather_condition`, `status`) and normalizes benchmarks against the dataset total.
+
+---
+
+## 2. FIB-VG Benchmark Constraints & Technical Boundaries
+
+### A. MongoDB Atlas Cloud Connectivity
+- **Constraint**: Persistent storage of benchmark runs requires an active outbound network connection to MongoDB Atlas with valid credentials configured in `MONGODB_URI`.
+- **Behavior**: If Atlas is unavailable or network times out, the benchmark marks the run as `persistence_status = "UNCONFIRMED"` and preserves in-memory run telemetry. It **never** silently switches to an unapproved local database or writes unencrypted flat files on disk.
+
+### B. Finite Scenario Horizon vs. Production Generalizability
+- **Constraint**: FIB-VG evaluates 42 rigorously defined scenarios across 8 failure categories.
+- **Limitation**: Passing a finite benchmark suite proves that verification gates correctly catch the 34 modeled failure modes and 8 clean controls. It does not constitute a mathematical guarantee against novel, un-modeled upstream data corruptions. Continuous expansion of the catalog is required as new failure modes emerge.
+
+### C. Concurrency and Execution Model
+- **Constraint**: Scenarios are executed sequentially in isolated execution blocks rather than parallel worker processes.
+- **Rationale**: Sequential execution prevents race conditions in shared verifier state, ensures deterministic timestamps, and enforces strict memory containment on the host machine without consuming unnecessary CPU or disk bandwidth.
+

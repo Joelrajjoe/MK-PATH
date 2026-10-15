@@ -183,3 +183,60 @@ Generates an executive reconciliation report in CSV or JSON matching the exact a
   - Content-Type: `text/csv` (or `application/json`)
   - Content-Disposition: `attachment; filename=dashboard_report_2b1bea2f.csv`
   - Contains executive metadata header, cards 1 & 2 highlights, top/bottom team rankings, quarterly series, and donut gauge metrics.
+
+---
+
+## 2. Fault-Injection Benchmark for Verification Gates (FIB-VG) Endpoints
+
+These endpoints power the independent fault-injection evaluation system, scenario catalog, real execution engine, metrics calculations, release policies, and Atlas persistence.
+
+### `GET /api/verification-benchmark/policies`
+Returns registered release gate evaluation policies.
+- **Response:** Array of `ReleasePolicySpec` objects (e.g. `FIB-RELEASE-POLICY-v1.0`).
+
+### `GET /api/verification-benchmark/scenarios`
+Lists all 42 registered benchmark scenarios with metadata and independent expectations.
+- **Query Parameters:**
+  - `category` (optional): Filter by `DATA_INTEGRITY`, `ANALYTICAL_CORRECTNESS`, etc.
+  - `severity` (optional): Filter by `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`.
+  - `release_critical_only` (optional): `bool`
+- **Response:** Array of `ScenarioCatalogItem` objects.
+
+### `GET /api/verification-benchmark/scenarios/{scenario_id}`
+Retrieves detailed definition, preconditions, and expected oracle outcomes for a specific scenario.
+- **Path Parameter:** `scenario_id` (e.g. `FIB-DAT-001`).
+
+### `POST /api/verification-benchmark/runs`
+Initiates and executes an authorized fault-injection benchmark run across all or selected scenarios.
+- **Request Body:**
+  ```json
+  {
+    "project_id": "default",
+    "scenario_ids": null,
+    "category": null,
+    "policy_version": "FIB-RELEASE-POLICY-v1.0",
+    "created_by": "lead_engineer"
+  }
+  ```
+- **Response:** `BenchmarkRunRecord` with executed results, aggregate metrics, gate decision, and audit status.
+
+### `GET /api/verification-benchmark/runs/{run_id}`
+Retrieves summary execution status and metadata for a benchmark run.
+
+### `GET /api/verification-benchmark/runs/{run_id}/results`
+Retrieves granular scenario-level execution results, observed vs expected outcomes, and diagnosis codes.
+
+### `GET /api/verification-benchmark/runs/{run_id}/metrics`
+Returns deterministic benchmark metrics (detection rate, false-block rate, critical escapes, audit completeness, deployment blocking) with explicit numerators and denominators.
+
+### `GET /api/verification-benchmark/runs/{run_id}/audit`
+Retrieves timestamped audit trail events and cryptographic evidence links for the specified run.
+
+### `GET /api/verification-benchmark/history`
+Lists historical completed benchmark runs for an authorized project.
+- **Query Parameters:** `project_id`, `limit` (default: 20), `skip` (default: 0).
+
+### `POST /api/verification-benchmark/compare`
+Compares two benchmark runs to assess regressions or improvements in verification gate performance.
+- **Query Parameters:** `run_id_a`, `run_id_b`.
+

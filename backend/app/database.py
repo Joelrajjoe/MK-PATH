@@ -19,7 +19,7 @@ from .config import settings
 
 logger = logging.getLogger("mkpath.database")
 
-# Logical collections required by the specification (Phase 3).
+# Logical collections required by the specification (Phase 3 & Option B).
 CORE_COLLECTIONS: List[str] = [
     "projects",
     "datasets",
@@ -34,6 +34,9 @@ CORE_COLLECTIONS: List[str] = [
     "audit_events",
     "healing_events",
     "pmsg_runs",
+    "fib_vg_runs",
+    "fib_vg_scenario_results",
+    "fib_vg_audit_events",
 ]
 
 # Indexes are created ONLY where justified by a concrete query pattern:
@@ -42,6 +45,9 @@ CORE_COLLECTIONS: List[str] = [
 # - ontology: semantic contexts are always fetched by dataset (latest first).
 # - clarification_questions: open questions are polled per dataset and status.
 # - pmsg_runs: robustness analysis runs indexed by project, dataset, and creation time.
+# - fib_vg_runs: benchmark runs indexed by project and creation time.
+# - fib_vg_scenario_results: scenario outcomes indexed by run_id and scenario_id.
+# - fib_vg_audit_events: benchmark audit trails indexed by run_id and timestamp.
 # All other collections are write-first with no established read pattern yet,
 # so no indexes are created (indexes cost write throughput and storage).
 JUSTIFIED_INDEXES: Dict[str, List[Any]] = {
@@ -50,6 +56,9 @@ JUSTIFIED_INDEXES: Dict[str, List[Any]] = {
     "ontology": [("dataset_id", 1), ("created_at", -1)],
     "clarification_questions": [("dataset_id", 1), ("status", 1), ("created_at", -1)],
     "pmsg_runs": [("project_id", 1), ("dataset_id", 1), ("created_at", -1)],
+    "fib_vg_runs": [("project_id", 1), ("created_at", -1)],
+    "fib_vg_scenario_results": [("run_id", 1), ("scenario_id", 1)],
+    "fib_vg_audit_events": [("run_id", 1), ("created_at", -1)],
 }
 
 
@@ -228,6 +237,25 @@ class LocalFallbackCollection:
                 break
         self._write_docs(docs)
 
+    async def replace_one(self, query: Dict[str, Any], replacement: Dict[str, Any], upsert: bool = False) -> Any:
+        docs = self._read_docs()
+        found = False
+        for i, d in enumerate(docs):
+            if self._matches(d, query):
+                rep_copy = dict(replacement)
+                if "_id" not in rep_copy and "_id" in d:
+                    rep_copy["_id"] = d["_id"]
+                docs[i] = rep_copy
+                found = True
+                break
+        if not found and upsert:
+            rep_copy = dict(replacement)
+            if "_id" not in rep_copy:
+                rep_copy["_id"] = str(uuid.uuid4().hex)
+            docs.append(rep_copy)
+        self._write_docs(docs)
+        return replacement
+
     async def create_index(self, keys: Any, **kwargs) -> str:
         return "local_index"
 
@@ -240,6 +268,9 @@ class LocalFallbackDB:
     def get_collection(self, name: str) -> LocalFallbackCollection:
         filepath = self.metadata_dir / f"{name}.json"
         return LocalFallbackCollection(name, filepath)
+
+    def __getitem__(self, name: str) -> LocalFallbackCollection:
+        return self.get_collection(name)
 
     async def create_collection(self, name: str):
         filepath = self.metadata_dir / f"{name}.json"
@@ -261,6 +292,9 @@ class DatabaseManager:
     @property
     def is_connected(self) -> bool:
         return self._connected
+
+    def is_ready(self) -> bool:
+        return self._connected and not self._using_fallback
 
     @property
     def last_error(self) -> Optional[str]:

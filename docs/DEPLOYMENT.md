@@ -9,8 +9,8 @@ This guide outlines the system prerequisites, environment configuration, databas
 - **Operating System:** Windows 10/11, macOS, or Ubuntu 20.04+ LTS.
 - **Python Runtime:** Python 3.10.x or 3.11.x (with `pip` and virtualenv support).
 - **Node.js Runtime:** Node.js 18+ (Node 20 or 22 recommended) with `npm` 9+.
-- **Database:** MongoDB Atlas cluster or local MongoDB instance (MongoDB 6.0+).
-- **Storage:** Local persistent disk space for Apache Parquet fact files (`datasets/parquet/`).
+- **Database:** MongoDB Atlas cloud cluster configured through environment variables (no local MongoDB or Docker container required).
+- **Storage:** Storage constrained strictly to `E:\MKPATH\data` (zero unnecessary C: drive consumption).
 
 ---
 
@@ -79,17 +79,22 @@ The executive dashboard application will be accessible at: `http://localhost:517
 
 ---
 
-## 4. Production Build & Verification
+## 4. Production Build & Release Gate Verification
 
-Before deployment to staging or production environments, run automated test suites and verify the production bundle:
+Before deployment to staging or production environments, the application must execute the full automated test suite and pass the mandatory **Fault-Injection Benchmark for Verification Gates (FIB-VG)**:
 
 ```bash
-# 1. Run Backend Automated Test Suite
-python -m pytest backend/tests/test_dashboard_analytics.py -v
+# 1. Run Automated Test Suite & FIB-VG Benchmark Suite
+.\backend\.venv\Scripts\pytest backend\tests\test_fib_vg.py -v
 
 # 2. Build Frontend Production Distribution
 cd frontend
 npm run build
 ```
 
-Verify that the output generates `dist/index.html` and bundled assets with zero TypeScript compilation errors.
+### Release Criteria (Policy: `FIB-RELEASE-POLICY-v1.0`):
+- **Zero Critical Escapes**: Must equal `0` (100% containment of all critical injected faults).
+- **Critical Deployment Blocking**: Must equal `100.0%` (unverified models/datasets must be blocked).
+- **Clean Control False-Block Rate**: Must be $\le 2.0\%$ (baseline: `0.0%`).
+- **Audit Completeness**: Must be $\ge 98.0\%$ (baseline: `100.0%`).
+- **Release Status**: Must be `RELEASE_APPROVED`. If status is `RELEASE_BLOCKED`, production deployment is halted.

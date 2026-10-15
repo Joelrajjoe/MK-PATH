@@ -44,3 +44,22 @@ The application was tested using `POST /api/dashboard/verify`, executing 5 indep
 
 All 5 checks passed with a **tolerance of 0.0** (100% exact match).
 No mock business data exists in the production codebase.
+
+---
+
+## 4. Option B: Fault-Injection Benchmark (FIB-VG) No-Mock Audit
+
+A comprehensive code and runtime audit was conducted across the newly implemented FIB-VG framework:
+
+1. **Zero Mock Benchmark Results**:
+   - Production API endpoints `/api/verification-benchmark/runs` and `/runs/{id}` return real execution records produced by `BenchmarkExecutionEngine.execute_scenario()`.
+   - No hardcoded percentages (`detection_rate = 94.5%`) exist in backend service or router modules.
+2. **Deterministic Metric Calculations**:
+   - All rates (Detection Rate, False-Block Rate, Critical Escape Rate, Diagnosis Accuracy, Audit Completeness, Deployment-Blocking Effectiveness) are calculated mathematically from scenario result sets using Python functions in `backend/app/benchmark/metrics.py`.
+3. **Frontend Presentation Integrity**:
+   - `FaultInjectionBenchmarkConsole.tsx` renders null/empty state cards when no run has been executed. It never populates default or synthetic percentages.
+   - When a run is executed or fetched, the console renders the exact numerator, denominator, and percentage returned by the authoritative backend API.
+4. **Target Verifier Execution**:
+   - Scenarios directly invoke MK-Path's actual verification logic (`run_verification_gates`) and ML deployment pipeline (`generate_deployment_artifacts`).
+   - The mutation test in `test_fib_vg.py` proved that altering a verification condition causes the benchmark to fail, proving that the benchmark tests real code rather than a mock echo chamber.
+
