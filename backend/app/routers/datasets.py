@@ -577,7 +577,12 @@ async def update_dataset_data(dataset_id: str, body: RowUpdateRequest) -> Dict[s
         logger.warning(f"Could not unregister DuckDB view before Parquet write: {unreg_exc}")
 
     # Save changes back to Parquet
-    df.to_parquet(norm_path, index=False)
+    try:
+        df.to_parquet(norm_path, index=False)
+    except Exception:
+        import duckdb
+        duckdb.query("SELECT * FROM df").write_parquet(norm_path)
+
 
     # Re-register view in DuckDB for instant live querying
     try:

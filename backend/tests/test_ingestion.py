@@ -535,3 +535,29 @@ def test_zip_entry_traversal_rejected():
     with pytest.raises(SecurityError) as exc:
         validate_zip_entry(info)
     assert exc.value.code == "PATH_TRAVERSAL"
+
+
+def test_excel_upload_with_mixed_object_types(upload_fn):
+    """Verify Excel sheets with mixed types (strings, ints, floats, nulls) and numeric headers parse cleanly."""
+    import pandas as pd
+    df = pd.DataFrame({
+        "2007 Sales Data": ["Q1 Report", 10500, 250.75, None],
+        2008: [1, 2, 3, 4],
+    })
+    buf = io.BytesIO()
+    df.to_excel(buf, index=False, engine="openpyxl")
+    buf.seek(0)
+
+    resp = upload_fn(
+        "mixed_sales.xlsx",
+        buf.getvalue(),
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert len(body["datasets"]) == 1
+    ds = body["datasets"][0]
+    assert ds["row_count"] == 4
+    assert ds["column_count"] == 2
+    assert ds["ingestion_status"] == "completed"
+

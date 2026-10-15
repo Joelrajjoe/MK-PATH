@@ -55,9 +55,63 @@ def _schema_from_parquet(path: Path) -> tuple:
     return schema, pf.metadata.num_rows
 
 
+def _sanitize_df_for_parquet(df: pd.DataFrame) -> pd.DataFrame:
+    """Sanitize DataFrame columns and mixed object types to ensure error-free Parquet serialization."""
+    df = df.copy()
+
+    # 1. Clean and normalize column names (must be unique non-empty strings)
+    clean_cols = []
+    seen = set()
+    for i, c in enumerate(df.columns):
+        name = str(c).strip() if c is not None else f"col_{i}"
+        if not name:
+            name = f"col_{i}"
+        orig = name
+        k = 1
+        while name in seen:
+            name = f"{orig}_{k}"
+            k += 1
+        seen.add(name)
+        clean_cols.append(name)
+    df.columns = clean_cols
+
+    # 2. Inspect and sanitize columns for PyArrow compatibility
+    for col in df.columns:
+        if df[col].dtype == "object":
+            try:
+                pa.array(df[col], from_pandas=True)
+            except Exception:
+                # Try numeric conversion first if values are mostly numeric
+                try:
+                    df[col] = pd.to_numeric(df[col], errors="raise")
+                except Exception:
+                    # Convert mixed types to string, preserving NULLs
+                    df[col] = df[col].map(lambda x: str(x) if pd.notna(x) else None)
+                    try:
+                        pa.array(df[col], from_pandas=True)
+                    except Exception:
+                        df[col] = df[col].astype(str).replace({"None": None, "nan": None, "<NA>": None})
+
+    return df
+
+
 def _df_to_table(df: pd.DataFrame, dest: Path, table_name: str) -> TableInfo:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(dest, index=False, engine="pyarrow")
+    df = _sanitize_df_for_parquet(df)
+    try:
+        df.to_parquet(dest, index=False, engine="pyarrow")
+    except Exception:
+        # Resilient fallback: write via DuckDB which handles mixed Arrow types gracefully
+        try:
+            import duckdb
+            duckdb.query("SELECT * FROM df").write_parquet(str(dest))
+        except Exception:
+            # Force all object columns to clean string as last resort
+            for col in df.columns:
+                if df[col].dtype == "object":
+                    df[col] = df[col].astype(str).replace({"None": None, "nan": None, "<NA>": None})
+            df.to_parquet(dest, index=False, engine="pyarrow")
+
     schema, rows = _schema_from_parquet(dest)
     return TableInfo(
         table_name=table_name,
@@ -66,6 +120,7 @@ def _df_to_table(df: pd.DataFrame, dest: Path, table_name: str) -> TableInfo:
         column_count=len(schema),
         schema=schema,
     )
+
 
 
 # ---------------------------------------------------------------------------
