@@ -239,11 +239,57 @@ def _detect_schema_roles(
     }
 
 
+def _resolve_column_for_value(
+    conn: Optional[duckdb.DuckDBPyConnection],
+    table_name: Optional[str],
+    val: Optional[str],
+    preferred_col: Optional[str],
+    candidate_cols: List[str],
+) -> Optional[str]:
+    """Check if val exists in preferred_col; if not, find the first candidate_col where it exists."""
+    if not val or str(val).lower() in ("all", "all teams / categories", "all categories", "all locations"):
+        return preferred_col
+    if not conn or not table_name:
+        return preferred_col
+
+    val_str = str(val).strip()
+
+    # 1. Check preferred_col first
+    if preferred_col:
+        try:
+            res = conn.execute(
+                f'SELECT 1 FROM "{table_name}" WHERE CAST({_sanitize_col(preferred_col)} AS VARCHAR) = ? LIMIT 1',
+                [val_str]
+            ).fetchone()
+            if res:
+                return preferred_col
+        except Exception:
+            pass
+
+    # 2. Check candidate columns
+    for c in candidate_cols:
+        if c == preferred_col:
+            continue
+        try:
+            res = conn.execute(
+                f'SELECT 1 FROM "{table_name}" WHERE CAST({_sanitize_col(c)} AS VARCHAR) = ? LIMIT 1',
+                [val_str]
+            ).fetchone()
+            if res:
+                return c
+        except Exception:
+            continue
+
+    return preferred_col
+
+
 def _build_filter_sql(
     filter_ctx: Optional[FilterContext],
     roles: Dict[str, Any],
+    conn: Optional[duckdb.DuckDBPyConnection] = None,
+    v_name: Optional[str] = None,
 ) -> Tuple[str, List[Any]]:
-    """Build safe parameterized WHERE clause from FilterContext."""
+    """Build safe parameterized WHERE clause from FilterContext with intelligent column resolution."""
     if not filter_ctx:
         return "1=1", []
 
@@ -253,6 +299,31 @@ def _build_filter_sql(
     date_col = roles.get("date_col")
     primary_cat = roles.get("primary_cat")
     secondary_cat = roles.get("secondary_cat")
+    types = roles.get("types", {})
+    all_cols = roles.get("all_cols", [])
+
+    cat_candidates = [
+        c for c in all_cols
+        if any(k in types.get(c, "") for k in ["varchar", "string", "text", "char"])
+    ]
+
+    # Resolve primary category column
+    if filter_ctx.primary_col and filter_ctx.primary_col in all_cols:
+        primary_cat = filter_ctx.primary_col
+    elif filter_ctx.team and filter_ctx.team.lower() not in ("all", "all teams / categories", "all categories"):
+        resolved_p = _resolve_column_for_value(conn, v_name, filter_ctx.team, primary_cat, cat_candidates)
+        if resolved_p:
+            primary_cat = resolved_p
+            roles["primary_cat"] = resolved_p
+
+    # Resolve secondary dimension column
+    if filter_ctx.secondary_col and filter_ctx.secondary_col in all_cols:
+        secondary_cat = filter_ctx.secondary_col
+    elif filter_ctx.location and filter_ctx.location.lower() not in ("all", "all locations"):
+        resolved_s = _resolve_column_for_value(conn, v_name, filter_ctx.location, secondary_cat, cat_candidates)
+        if resolved_s:
+            secondary_cat = resolved_s
+            roles["secondary_cat"] = resolved_s
 
     if date_col:
         parse_expr = _build_date_parse_expr(date_col)
@@ -278,11 +349,11 @@ def _build_filter_sql(
             clauses.append(f'month({parse_expr}) = ?')
             params.append(int(filter_ctx.month))
 
-    if primary_cat and filter_ctx.team and filter_ctx.team != "All":
+    if primary_cat and filter_ctx.team and filter_ctx.team.lower() not in ("all", "all teams / categories", "all categories"):
         clauses.append(f"COALESCE(NULLIF(CAST({_sanitize_col(primary_cat)} AS VARCHAR), ''), 'Unknown') = ?")
         params.append(filter_ctx.team)
 
-    if secondary_cat and filter_ctx.location and filter_ctx.location != "All":
+    if secondary_cat and filter_ctx.location and filter_ctx.location.lower() not in ("all", "all locations"):
         clauses.append(f"COALESCE(NULLIF(CAST({_sanitize_col(secondary_cat)} AS VARCHAR), ''), 'General') = ?")
         params.append(filter_ctx.location)
 
@@ -314,14 +385,15 @@ def compute_dashboard_analytics(
 
     # 1. Inspect Schema Roles
     roles = _detect_schema_roles(conn, v_name)
+
+    # 2. Build Filter SQL with intelligent column resolution
+    filter_sql, filter_params = _build_filter_sql(filter_ctx, roles, conn, v_name)
+
     date_col = roles["date_col"]
     target_col = roles["target_col"]
     primary_cat = roles["primary_cat"]
     secondary_cat = roles["secondary_cat"]
     primary_num = roles["primary_num"]
-
-    # 2. Build Filter SQL
-    filter_sql, filter_params = _build_filter_sql(filter_ctx, roles)
 
     # 3. Overall Counts & Data Quality Check
     tot_row = conn.execute(f'SELECT count(*) FROM "{v_name}"').fetchone()
@@ -381,7 +453,14 @@ def compute_dashboard_analytics(
         card1.metric_label = f"(QTD Volume)"
         card1.title = f"{primary_cat.replace('_', ' ').title()} Volume - Quarter-to-Quarter"
 
-    # Compute QoQ if date exists, or sequential halves if not
+    # Base filter without quarter or month constraint to enable comparison against prior quarter
+    base_filter_ctx = filter_ctx.model_copy(deep=True) if filter_ctx else FilterContext()
+    target_q_str = base_filter_ctx.quarter
+    target_month = base_filter_ctx.month
+    base_filter_ctx.quarter = None
+    base_filter_ctx.month = None
+    base_filter_sql, base_filter_params = _build_filter_sql(base_filter_ctx, roles, conn, v_name)
+
     has_temporal = False
     if date_col and date_parse_expr:
         try:
@@ -392,15 +471,54 @@ def compute_dashboard_analytics(
                     month({date_parse_expr}) as mo,
                     {metric_expr} as m_val
                 FROM "{v_name}"
-                WHERE {filter_sql} AND {date_parse_expr} IS NOT NULL
+                WHERE {base_filter_sql} AND {date_parse_expr} IS NOT NULL
                 GROUP BY 1, 2, 3
                 ORDER BY 1, 2, 3
-            """, filter_params).df()
+            """, base_filter_params).df()
 
-            if not q_df.empty and len(q_df["qtr"].unique()) >= 2:
-                # Group by quarter
+            if not q_df.empty:
                 qtr_agg = q_df.groupby(["yr", "qtr"])["m_val"].sum().reset_index()
-                if len(qtr_agg) >= 2:
+
+                # Check if user selected a specific quarter
+                if target_q_str:
+                    q_num = int(str(target_q_str).upper().replace("Q", "").strip())
+                    target_yr = int(filter_ctx.year) if (filter_ctx and filter_ctx.year) else int(qtr_agg["yr"].max())
+
+                    curr_q_rows = qtr_agg[(qtr_agg["yr"] == target_yr) & (qtr_agg["qtr"] == q_num)]
+                    current_q = _safe_float(curr_q_rows["m_val"].iloc[0]) if not curr_q_rows.empty else 0.0
+
+                    prior_q_num = 4 if q_num == 1 else (q_num - 1)
+                    prior_yr_num = (target_yr - 1) if q_num == 1 else target_yr
+                    prev_q_rows = qtr_agg[(qtr_agg["yr"] == prior_yr_num) & (qtr_agg["qtr"] == prior_q_num)]
+                    prev_q = _safe_float(prev_q_rows["m_val"].iloc[0]) if not prev_q_rows.empty else 0.0
+
+                    card1.current_value = current_q
+                    card1.previous_value = prev_q
+                    if prev_q > 0:
+                        change = ((current_q - prev_q) / prev_q) * 100.0
+                        card1.change_pct = round(change, 1)
+                        card1.change_formatted = f"{'+' if change >= 0 else ''}{change:.0f}%"
+                        card1.is_positive = (change >= 0)
+                    elif current_q > 0:
+                        card1.change_pct = 100.0
+                        card1.change_formatted = "+100%"
+                        card1.is_positive = True
+                    else:
+                        card1.change_pct = 0.0
+                        card1.change_formatted = "0%"
+                        card1.is_positive = True
+
+                    month_rows = q_df[(q_df["yr"] == target_yr) & (q_df["qtr"] == q_num)]
+                    for _, row in month_rows.iterrows():
+                        m_val_f = _safe_float(row["m_val"])
+                        card1.sparkline_points.append(SparklinePoint(
+                            label=f"M{int(row['mo'])}",
+                            value=m_val_f,
+                            formatted=f"{m_val_f:.0f}"
+                        ))
+                    has_temporal = True
+
+                elif len(qtr_agg) >= 2:
                     current_q = _safe_float(qtr_agg.iloc[-1]["m_val"])
                     prev_q = _safe_float(qtr_agg.iloc[-2]["m_val"])
                     card1.current_value = current_q
@@ -410,13 +528,43 @@ def compute_dashboard_analytics(
                         card1.change_pct = round(change, 1)
                         card1.change_formatted = f"{'+' if change >= 0 else ''}{change:.0f}%"
                         card1.is_positive = (change >= 0)
-                    else:
+                    elif current_q > 0:
+                        card1.change_pct = 100.0
                         card1.change_formatted = "+100%"
                         card1.is_positive = True
+                    else:
+                        card1.change_pct = 0.0
+                        card1.change_formatted = "0%"
+                        card1.is_positive = True
 
-                    # Recent months sparkline (last 3-6 months)
                     recent_months = q_df.tail(6)
                     for _, row in recent_months.iterrows():
+                        m_val_f = _safe_float(row["m_val"])
+                        card1.sparkline_points.append(SparklinePoint(
+                            label=f"M{int(row['mo'])}",
+                            value=m_val_f,
+                            formatted=f"{m_val_f:.0f}"
+                        ))
+                    has_temporal = True
+
+                elif len(qtr_agg) == 1:
+                    current_q = _safe_float(qtr_agg.iloc[0]["m_val"])
+                    card1.current_value = current_q
+                    if len(q_df) >= 2:
+                        half_point = len(q_df) // 2
+                        first_half = _safe_float(q_df.iloc[:half_point]["m_val"].sum())
+                        second_half = _safe_float(q_df.iloc[half_point:]["m_val"].sum())
+                        card1.previous_value = first_half
+                        if first_half > 0:
+                            change = ((second_half - first_half) / first_half) * 100.0
+                            card1.change_pct = round(change, 1)
+                            card1.change_formatted = f"{'+' if change >= 0 else ''}{change:.0f}%"
+                            card1.is_positive = (change >= 0)
+                        else:
+                            card1.change_pct = 0.0
+                            card1.change_formatted = "0%"
+                            card1.is_positive = True
+                    for _, row in q_df.iterrows():
                         m_val_f = _safe_float(row["m_val"])
                         card1.sparkline_points.append(SparklinePoint(
                             label=f"M{int(row['mo'])}",
@@ -428,16 +576,10 @@ def compute_dashboard_analytics(
             logger.warning("Quarterly temporal computation fallback: %s", exc)
 
     if not has_temporal:
-        # Sequential partition fallback: compare first half to second half of data
         tot_row_res = conn.execute(f'SELECT {metric_expr} FROM "{v_name}" WHERE {filter_sql}', filter_params).fetchone()
         tot_res = _safe_float(tot_row_res[0] if tot_row_res else 0.0)
         card1.current_value = tot_res
-        card1.change_pct = 14.0  # Normalized indicator matching baseline performance
-        card1.change_formatted = "+14%"
-        card1.is_positive = True
-        card1.status_note = "Single temporal horizon detected; displaying sequential baseline."
 
-        # Compute chronological window slices via CTE (avoiding window function in GROUP BY)
         safe_filtered_cnt = max(1, filtered_records)
         window_df = conn.execute(f"""
             WITH numbered AS (
@@ -454,6 +596,27 @@ def compute_dashboard_analytics(
             GROUP BY 1
             ORDER BY 1
         """, filter_params).df()
+
+        if len(window_df) >= 2:
+            mid = len(window_df) // 2
+            h1 = _safe_float(window_df.iloc[:mid]["val"].sum())
+            h2 = _safe_float(window_df.iloc[mid:]["val"].sum())
+            card1.previous_value = h1
+            if h1 > 0:
+                change = ((h2 - h1) / h1) * 100.0
+                card1.change_pct = round(change, 1)
+                card1.change_formatted = f"{'+' if change >= 0 else ''}{change:.0f}%"
+                card1.is_positive = (change >= 0)
+            else:
+                card1.change_pct = 0.0
+                card1.change_formatted = "0%"
+                card1.is_positive = True
+        else:
+            card1.change_pct = 0.0
+            card1.change_formatted = "0%"
+            card1.is_positive = True
+
+        card1.status_note = "Chronological window sequence computed across active records."
         for idx, row in window_df.iterrows():
             v_val = _safe_float(row["val"])
             card1.sparkline_points.append(SparklinePoint(
@@ -463,7 +626,7 @@ def compute_dashboard_analytics(
             ))
 
     # -------------------------------------------------------------------------
-    # CARD 2: Year-over-Year / Product Dimension Change
+    # CARD 2: Year-over-Year / Trajectory Change
     # -------------------------------------------------------------------------
     card2 = Card2YearOverYear()
     card2.selected_team = primary_cat.replace("_", " ").title()
@@ -477,51 +640,130 @@ def compute_dashboard_analytics(
         card2.title = f"{card2.selected_team} Velocity - Year-over-Year"
         card2.metric_label = f"(YoY {card2.selected_team})"
 
-    if date_col and has_temporal and len(q_df["yr"].unique()) >= 2:
-        yr_agg = q_df.groupby("yr")["m_val"].sum().reset_index()
-        curr_yr = _safe_float(yr_agg.iloc[-1]["m_val"])
-        prior_yr = _safe_float(yr_agg.iloc[-2]["m_val"])
-        card2.current_value = curr_yr
-        card2.prior_year_value = prior_yr
-        if prior_yr > 0:
-            yoy = ((curr_yr - prior_yr) / prior_yr) * 100.0
-            card2.change_pct = round(yoy, 1)
-            card2.change_formatted = f"{'+' if yoy >= 0 else ''}{yoy:.0f}%"
-            card2.is_positive = (yoy >= 0)
-        for _, row in yr_agg.iterrows():
-            y_val = _safe_float(row["m_val"])
-            card2.sparkline_points.append(SparklinePoint(
-                label=str(int(row["yr"])),
-                value=y_val,
-                formatted=f"{y_val:.0f}"
-            ))
-    else:
-        card2.change_pct = -6.0
-        card2.change_formatted = "-6%"
-        card2.is_positive = False
-        card2.status_note = "1-year evaluation boundary observed; trajectory variance relative to mean."
-        # Generate multi-segment trajectory
-        if card1.sparkline_points:
-            for p in card1.sparkline_points:
-                card2.sparkline_points.append(SparklinePoint(
-                    label=p.label,
-                    value=round(p.value * 0.94, 1),
-                    formatted=f"{round(p.value * 0.94, 0):.0f}"
-                ))
+    # Base filter without year constraint
+    y_filter_ctx = filter_ctx.model_copy(deep=True) if filter_ctx else FilterContext()
+    selected_year = y_filter_ctx.year
+    y_filter_ctx.year = None
+    y_filter_sql, y_filter_params = _build_filter_sql(y_filter_ctx, roles, conn, v_name)
+
+    card2_computed = False
+    if date_col and date_parse_expr:
+        try:
+            yr_df = conn.execute(f"""
+                SELECT 
+                    year({date_parse_expr}) as yr,
+                    {metric_expr} as m_val
+                FROM "{v_name}"
+                WHERE {y_filter_sql} AND {date_parse_expr} IS NOT NULL
+                GROUP BY 1
+                ORDER BY 1
+            """, y_filter_params).df()
+
+            if len(yr_df) >= 2:
+                target_y = int(selected_year) if selected_year else int(yr_df.iloc[-1]["yr"])
+                curr_y_row = yr_df[yr_df["yr"] == target_y]
+                prev_y_row = yr_df[yr_df["yr"] == (target_y - 1)]
+
+                curr_yr = _safe_float(curr_y_row["m_val"].iloc[0]) if not curr_y_row.empty else _safe_float(yr_df.iloc[-1]["m_val"])
+                prior_yr = _safe_float(prev_y_row["m_val"].iloc[0]) if not prev_y_row.empty else _safe_float(yr_df.iloc[-2]["m_val"])
+
+                card2.current_value = curr_yr
+                card2.prior_year_value = prior_yr
+                if prior_yr > 0:
+                    yoy = ((curr_yr - prior_yr) / prior_yr) * 100.0
+                    card2.change_pct = round(yoy, 1)
+                    card2.change_formatted = f"{'+' if yoy >= 0 else ''}{yoy:.0f}%"
+                    card2.is_positive = (yoy >= 0)
+                elif curr_yr > 0:
+                    card2.change_pct = 100.0
+                    card2.change_formatted = "+100%"
+                    card2.is_positive = True
+                else:
+                    card2.change_pct = 0.0
+                    card2.change_formatted = "0%"
+                    card2.is_positive = True
+
+                for _, row in yr_df.iterrows():
+                    y_val = _safe_float(row["m_val"])
+                    card2.sparkline_points.append(SparklinePoint(
+                        label=str(int(row["yr"])),
+                        value=y_val,
+                        formatted=f"{y_val:.0f}"
+                    ))
+                card2_computed = True
+            elif len(yr_df) == 1:
+                single_yr = int(yr_df.iloc[0]["yr"])
+                q_breakdown = conn.execute(f"""
+                    SELECT 
+                        quarter({date_parse_expr}) as qtr,
+                        {metric_expr} as q_val
+                    FROM "{v_name}"
+                    WHERE {y_filter_sql} AND {date_parse_expr} IS NOT NULL
+                    GROUP BY 1
+                    ORDER BY 1
+                """, y_filter_params).df()
+
+                if not q_breakdown.empty:
+                    avg_q = _safe_float(q_breakdown["q_val"].mean())
+                    if filter_ctx and filter_ctx.quarter:
+                        q_num = int(str(filter_ctx.quarter).upper().replace("Q", "").strip())
+                        matched_q = q_breakdown[q_breakdown["qtr"] == q_num]
+                        current_val = _safe_float(matched_q["q_val"].iloc[0]) if not matched_q.empty else 0.0
+                    else:
+                        current_val = _safe_float(q_breakdown.iloc[-1]["q_val"])
+
+                    card2.current_value = current_val
+                    card2.prior_year_value = round(avg_q, 1)
+                    if avg_q > 0:
+                        variance = ((current_val - avg_q) / avg_q) * 100.0
+                        card2.change_pct = round(variance, 1)
+                        card2.change_formatted = f"{'+' if variance >= 0 else ''}{variance:.0f}%"
+                        card2.is_positive = (variance >= 0)
+                    else:
+                        card2.change_pct = 0.0
+                        card2.change_formatted = "0%"
+                        card2.is_positive = True
+
+                    card2.status_note = f"Single-year dataset ({single_yr}): trajectory vs quarterly baseline."
+                    for _, row in q_breakdown.iterrows():
+                        qv = _safe_float(row["q_val"])
+                        card2.sparkline_points.append(SparklinePoint(
+                            label=f"Q{int(row['qtr'])}",
+                            value=qv,
+                            formatted=f"{qv:.0f}"
+                        ))
+                    card2_computed = True
+        except Exception as exc:
+            logger.warning("Yearly calculation fallback: %s", exc)
+
+    if not card2_computed:
+        card2.current_value = card1.current_value
+        card2.prior_year_value = card1.previous_value
+        card2.change_pct = card1.change_pct
+        card2.change_formatted = card1.change_formatted
+        card2.is_positive = card1.is_positive
+        card2.status_note = "Trajectory evaluated across sequential dataset partitions."
+        card2.sparkline_points = list(card1.sparkline_points)
 
     # -------------------------------------------------------------------------
     # CARD 3: Top and Bottom 3 Categories — Proportion / Target Breakdown
     # -------------------------------------------------------------------------
-    dim_display = primary_cat.replace("_", " ").title()
+    # If the user already filtered by a specific primary team/category,
+    # evaluate top & bottom 3 across secondary_cat (e.g. weather / city) to provide granular insight!
+    eval_cat = primary_cat
+    if filter_ctx and filter_ctx.team and filter_ctx.team.lower() not in ("all", "all teams / categories", "all categories") and secondary_cat:
+        eval_cat = secondary_cat
+
+    dim_display = eval_cat.replace("_", " ").title()
     if target_col:
-        card3_title = f"Top and bottom 3 {primary_cat.replace('_', ' ')}s - {target_col.replace('_', ' ')} compliance"
+        card3_title = f"Top and bottom 3 {eval_cat.replace('_', ' ')}s - {target_col.replace('_', ' ')} compliance"
         card3_basis = f"Event rate of {target_col.replace('_', ' ')}"
     elif primary_num:
-        card3_title = f"Top and bottom 3 {primary_cat.replace('_', ' ')}s - by {primary_num.replace('_', ' ')}"
+        card3_title = f"Top and bottom 3 {eval_cat.replace('_', ' ')}s - by {primary_num.replace('_', ' ')}"
         card3_basis = f"Proportion of total {primary_num.replace('_', ' ')}"
     else:
-        card3_title = f"Top and bottom 3 {primary_cat.replace('_', ' ')}s - Volume Share (YTD)"
-        card3_basis = f"Proportion of {primary_cat.replace('_', ' ')} volume"
+        card3_title = f"Top and bottom 3 {eval_cat.replace('_', ' ')}s - Volume Share (YTD)"
+        card3_basis = f"Proportion of {eval_cat.replace('_', ' ')} volume"
 
     card3 = Card3TopBottomTeams(
         primary_dimension=dim_display,
@@ -531,7 +773,7 @@ def compute_dashboard_analytics(
 
     group_rows = conn.execute(f"""
         SELECT 
-            COALESCE(NULLIF(CAST({_sanitize_col(primary_cat)} AS VARCHAR), ''), 'Unknown') as cat_name,
+            COALESCE(NULLIF(CAST({_sanitize_col(eval_cat)} AS VARCHAR), ''), 'Unknown') as cat_name,
             COUNT(*) as cat_total_rows,
             {metric_expr} as cat_metric
         FROM "{v_name}"
@@ -583,8 +825,7 @@ def compute_dashboard_analytics(
             ))
 
     # -------------------------------------------------------------------------
-    # -------------------------------------------------------------------------
-    # CARD 4: Quarterly Performance / Trend (Combo Bar + Line Chart)
+    # CARD 4: Quarterly / Monthly Performance (Combo Bar + Line Chart)
     # -------------------------------------------------------------------------
     card4 = Card4QuarterlyPerformance()
     distinct_cats = [r[0] for r in group_rows[:5]] if group_rows else ["General"]
@@ -592,43 +833,79 @@ def compute_dashboard_analytics(
     active_tab = filter_ctx.team if (filter_ctx and filter_ctx.team and filter_ctx.team in distinct_cats) else distinct_cats[0]
     card4.active_tab = active_tab
     if target_col:
-        card4.title = f"Quarterly {target_col.replace('_', ' ')} - {active_tab}"
+        card4.title = f"Performance Trend - {active_tab}"
         card4.legend_label = target_col.replace('_', ' ').title()
     elif primary_num:
-        card4.title = f"Quarterly {primary_num.replace('_', ' ')} - {active_tab}"
+        card4.title = f"Performance Trend - {active_tab}"
         card4.legend_label = primary_num.replace('_', ' ').title()
     else:
-        card4.title = f"Quarterly volume - {active_tab}"
+        card4.title = f"Volume Trend - {active_tab}"
         card4.legend_label = f"{active_tab} Count"
 
-    # Query quarterly series for active tab
+    # Query series for active tab
     tab_escaped = active_tab.replace("'", "''")
-    tab_filter = f"{filter_sql} AND COALESCE(NULLIF(CAST({_sanitize_col(primary_cat)} AS VARCHAR), ''), 'Unknown') = '{tab_escaped}'"
+    if filter_ctx and filter_ctx.team and filter_ctx.team.lower() not in ("all", "all teams / categories", "all categories"):
+        tab_filter = filter_sql
+    else:
+        tab_filter = f"{filter_sql} AND COALESCE(NULLIF(CAST({_sanitize_col(eval_cat)} AS VARCHAR), ''), 'Unknown') = '{tab_escaped}'"
 
-    if date_col and has_temporal and date_parse_expr:
+    month_names = {1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun", 7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec"}
+
+    if date_col and date_parse_expr:
         try:
-            combo_df = conn.execute(f"""
-                SELECT 
-                    year({date_parse_expr}) as yr,
-                    quarter({date_parse_expr}) as qtr,
-                    {metric_expr} as bar_m
-                FROM "{v_name}"
-                WHERE {tab_filter} AND {date_parse_expr} IS NOT NULL
-                GROUP BY 1, 2
-                ORDER BY 1, 2
-            """, filter_params).df()
+            if filter_ctx and filter_ctx.quarter:
+                # User selected a specific quarter: render monthly breakdown (e.g. Apr, May, Jun for Q2)
+                combo_df = conn.execute(f"""
+                    SELECT 
+                        year({date_parse_expr}) as yr,
+                        month({date_parse_expr}) as mo,
+                        {metric_expr} as bar_m
+                    FROM "{v_name}"
+                    WHERE {tab_filter} AND {date_parse_expr} IS NOT NULL
+                    GROUP BY 1, 2
+                    ORDER BY 1, 2
+                """, filter_params).df()
 
-            for _, row in combo_df.iterrows():
-                y_val = int(row["yr"])
-                q_val = f"Q{int(row['qtr'])}"
-                b_val = _safe_float(row["bar_m"])
-                card4.series.append(QuarterlySeriesPoint(
-                    period_label=f"{y_val} {q_val}",
-                    year=y_val,
-                    quarter=q_val,
-                    bar_value=b_val,
-                    line_value=round(b_val * 0.95, 1)
-                ))
+                if not combo_df.empty:
+                    mean_val = _safe_float(combo_df["bar_m"].mean())
+                    for _, row in combo_df.iterrows():
+                        y_val = int(row["yr"])
+                        mo_val = int(row["mo"])
+                        b_val = _safe_float(row["bar_m"])
+                        m_name = month_names.get(mo_val, f"M{mo_val}")
+                        card4.series.append(QuarterlySeriesPoint(
+                            period_label=f"{m_name} {y_val}",
+                            year=y_val,
+                            quarter=f"M{mo_val}",
+                            bar_value=b_val,
+                            line_value=round(mean_val, 1)
+                        ))
+            else:
+                # All quarters: render quarterly breakdown
+                combo_df = conn.execute(f"""
+                    SELECT 
+                        year({date_parse_expr}) as yr,
+                        quarter({date_parse_expr}) as qtr,
+                        {metric_expr} as bar_m
+                    FROM "{v_name}"
+                    WHERE {tab_filter} AND {date_parse_expr} IS NOT NULL
+                    GROUP BY 1, 2
+                    ORDER BY 1, 2
+                """, filter_params).df()
+
+                if not combo_df.empty:
+                    mean_val = _safe_float(combo_df["bar_m"].mean())
+                    for _, row in combo_df.iterrows():
+                        y_val = int(row["yr"])
+                        q_val = f"Q{int(row['qtr'])}"
+                        b_val = _safe_float(row["bar_m"])
+                        card4.series.append(QuarterlySeriesPoint(
+                            period_label=f"{y_val} {q_val}",
+                            year=y_val,
+                            quarter=q_val,
+                            bar_value=b_val,
+                            line_value=round(mean_val, 1)
+                        ))
         except Exception as exc:
             logger.warning("Combo series query fallback: %s", exc)
 
@@ -650,6 +927,9 @@ def compute_dashboard_analytics(
             GROUP BY 1
             ORDER BY 1
         """, filter_params).fetchall()
+
+        vals = [_safe_float(r[1]) for r in slice_df]
+        mean_slice = (sum(vals) / len(vals)) if vals else 0.0
         for r in slice_df:
             s_idx = int(r[0])
             b_val = _safe_float(r[1])
@@ -658,7 +938,7 @@ def compute_dashboard_analytics(
                 year=datetime.now(timezone.utc).year,
                 quarter=f"P{s_idx + 1}",
                 bar_value=round(b_val, 1),
-                line_value=round(b_val * 0.95, 1)
+                line_value=round(mean_slice, 1)
             ))
 
     # -------------------------------------------------------------------------
@@ -676,7 +956,7 @@ def compute_dashboard_analytics(
             COUNT(*) as denom,
             {metric_expr} as num
         FROM "{v_name}"
-        WHERE {filter_sql} AND COALESCE(NULLIF(CAST({_sanitize_col(primary_cat)} AS VARCHAR), ''), 'Unknown') = '{g1_escaped}'
+        WHERE {filter_sql} AND COALESCE(NULLIF(CAST({_sanitize_col(eval_cat)} AS VARCHAR), ''), 'Unknown') = '{g1_escaped}'
     """, filter_params).fetchone()
 
     denom1 = _safe_float(g1_stats[0]) if (g1_stats and g1_stats[0]) else 0.0
@@ -697,7 +977,7 @@ def compute_dashboard_analytics(
         card5.percentage = round(min(100.0, max(0.0, share1)), 1)
         card5.metric_description = f"{card5.percentage:.1f}% of total {primary_num.replace('_', ' ')}"
     else:
-        card5.title = f"{active_gauge1_tab} Share of {primary_cat.replace('_', ' ').title()} (QTD)"
+        card5.title = f"{active_gauge1_tab} Share of {eval_cat.replace('_', ' ').title()} (QTD)"
         card5.center_label = "Share"
         share1 = (denom1 / max(1.0, float(filtered_records))) * 100.0
         card5.percentage = round(min(100.0, max(0.0, share1)), 1)
@@ -794,8 +1074,11 @@ def compute_dashboard_analytics(
     )
 
 
-def get_filter_dimensions(dataset_id: str) -> FilterDimensions:
-    """Extract distinct dimension values for dynamic cascading filters."""
+def get_filter_dimensions(
+    dataset_id: str,
+    filter_ctx: Optional[FilterContext] = None,
+) -> FilterDimensions:
+    """Extract distinct dimension values for dynamic cascading filters with actual record counts."""
     v_name = registry.ensure_view(dataset_id)
     conn = registry.get_conn()
     roles = _detect_schema_roles(conn, v_name)
@@ -803,24 +1086,90 @@ def get_filter_dimensions(dataset_id: str) -> FilterDimensions:
     date_col = roles["date_col"]
     primary_cat = roles["primary_cat"]
     secondary_cat = roles["secondary_cat"]
+    all_cols = roles.get("all_cols", [])
+    types = roles.get("types", {})
+
+    cat_candidates = [
+        c for c in all_cols
+        if any(k in types.get(c, "") for k in ["varchar", "string", "text", "char"])
+    ]
+
+    # Resolve dimensions if specified
+    if filter_ctx:
+        if filter_ctx.primary_col and filter_ctx.primary_col in all_cols:
+            primary_cat = filter_ctx.primary_col
+        elif filter_ctx.team and filter_ctx.team.lower() not in ("all", "all teams / categories", "all categories"):
+            resolved = _resolve_column_for_value(conn, v_name, filter_ctx.team, primary_cat, cat_candidates)
+            if resolved:
+                primary_cat = resolved
+                roles["primary_cat"] = resolved
+
+        if filter_ctx.secondary_col and filter_ctx.secondary_col in all_cols:
+            secondary_cat = filter_ctx.secondary_col
+        elif filter_ctx.location and filter_ctx.location.lower() not in ("all", "all locations"):
+            resolved = _resolve_column_for_value(conn, v_name, filter_ctx.location, secondary_cat, cat_candidates)
+            if resolved:
+                secondary_cat = resolved
+                roles["secondary_cat"] = resolved
 
     # Extract distinct teams/categories (limit 30)
+    # If date filters exist in filter_ctx, filter teams to matching records
+    date_where_clauses: List[str] = []
+    date_where_params: List[Any] = []
+    if date_col and filter_ctx:
+        parse_expr = _build_date_parse_expr(date_col)
+        if filter_ctx.year:
+            date_where_clauses.append(f'year({parse_expr}) = ?')
+            date_where_params.append(int(filter_ctx.year))
+        if filter_ctx.quarter:
+            q_str = str(filter_ctx.quarter).upper().replace("Q", "").strip()
+            if q_str.isdigit() and int(q_str) in (1, 2, 3, 4):
+                date_where_clauses.append(f'quarter({parse_expr}) = ?')
+                date_where_params.append(int(q_str))
+
+    date_where_sql = ("WHERE " + " AND ".join(date_where_clauses)) if date_where_clauses else ""
+
     teams = [
         str(r[0]) for r in conn.execute(
             f'SELECT DISTINCT COALESCE(NULLIF(CAST({_sanitize_col(primary_cat)} AS VARCHAR), \'\'), \'Unknown\') '
-            f'FROM "{v_name}" WHERE {_sanitize_col(primary_cat)} IS NOT NULL LIMIT 30'
+            f'FROM "{v_name}" {date_where_sql} {"AND" if date_where_sql else "WHERE"} {_sanitize_col(primary_cat)} IS NOT NULL LIMIT 30',
+            date_where_params
         ).fetchall()
         if r[0] is not None
     ]
+    if not teams:
+        teams = [
+            str(r[0]) for r in conn.execute(
+                f'SELECT DISTINCT COALESCE(NULLIF(CAST({_sanitize_col(primary_cat)} AS VARCHAR), \'\'), \'Unknown\') '
+                f'FROM "{v_name}" WHERE {_sanitize_col(primary_cat)} IS NOT NULL LIMIT 30'
+            ).fetchall()
+            if r[0] is not None
+        ]
 
-    # Extract distinct locations/attributes (limit 30)
+    # Cascading locations: if team is selected, get locations for that team!
+    loc_where_clauses = list(date_where_clauses)
+    loc_where_params = list(date_where_params)
+    if filter_ctx and filter_ctx.team and filter_ctx.team.lower() not in ("all", "all teams / categories", "all categories"):
+        loc_where_clauses.append(f"COALESCE(NULLIF(CAST({_sanitize_col(primary_cat)} AS VARCHAR), ''), 'Unknown') = ?")
+        loc_where_params.append(filter_ctx.team)
+
+    loc_where_sql = ("WHERE " + " AND ".join(loc_where_clauses)) if loc_where_clauses else ""
     locations = [
         str(r[0]) for r in conn.execute(
             f'SELECT DISTINCT COALESCE(NULLIF(CAST({_sanitize_col(secondary_cat)} AS VARCHAR), \'\'), \'General\') '
-            f'FROM "{v_name}" WHERE {_sanitize_col(secondary_cat)} IS NOT NULL LIMIT 30'
+            f'FROM "{v_name}" {loc_where_sql} {"AND" if loc_where_sql else "WHERE"} {_sanitize_col(secondary_cat)} IS NOT NULL LIMIT 30',
+            loc_where_params
         ).fetchall()
         if r[0] is not None
     ]
+    if not locations:
+        locations = [
+            str(r[0]) for r in conn.execute(
+                f'SELECT DISTINCT COALESCE(NULLIF(CAST({_sanitize_col(secondary_cat)} AS VARCHAR), \'\'), \'General\') '
+                f'FROM "{v_name}" WHERE {_sanitize_col(secondary_cat)} IS NOT NULL LIMIT 30'
+            ).fetchall()
+            if r[0] is not None
+        ]
 
     years: List[int] = []
     quarters: List[str] = ["Q1", "Q2", "Q3", "Q4"]
@@ -845,6 +1194,14 @@ def get_filter_dimensions(dataset_id: str) -> FilterDimensions:
         except Exception as exc:
             logger.warning("Could not extract filter years: %s", exc)
 
+    # Compute row counts under filter_ctx
+    tot_row = conn.execute(f'SELECT count(*) FROM "{v_name}"').fetchone()
+    total_records = int(tot_row[0]) if tot_row else 0
+
+    filter_sql, filter_params = _build_filter_sql(filter_ctx, roles, conn, v_name)
+    fil_row = conn.execute(f'SELECT count(*) FROM "{v_name}" WHERE {filter_sql}', filter_params).fetchone()
+    filtered_records = int(fil_row[0]) if fil_row else 0
+
     return FilterDimensions(
         years=years,
         quarters=quarters,
@@ -852,6 +1209,12 @@ def get_filter_dimensions(dataset_id: str) -> FilterDimensions:
         locations=locations,
         date_min=date_min,
         date_max=date_max,
+        primary_dim_col=primary_cat,
+        primary_dim_label=primary_cat.replace('_', ' ').title() if primary_cat else "Category",
+        secondary_dim_col=secondary_cat,
+        secondary_dim_label=secondary_cat.replace('_', ' ').title() if secondary_cat else "Location",
+        total_records=total_records,
+        filtered_records=filtered_records,
     )
 
 
@@ -860,10 +1223,10 @@ def get_drilldown_records(req: DrilldownRequest) -> DrilldownResponse:
     v_name = registry.ensure_view(req.dataset_id)
     conn = registry.get_conn()
     roles = _detect_schema_roles(conn, v_name)
+
+    filter_sql, filter_params = _build_filter_sql(req.filter_context, roles, conn, v_name)
     primary_cat = roles["primary_cat"]
     secondary_cat = roles["secondary_cat"]
-
-    filter_sql, filter_params = _build_filter_sql(req.filter_context, roles)
     extra_clauses: List[str] = []
     extra_params: List[Any] = []
 

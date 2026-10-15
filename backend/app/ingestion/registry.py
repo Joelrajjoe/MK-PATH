@@ -27,7 +27,8 @@ def get_conn() -> duckdb.DuckDBPyConnection:
 
 def view_name(dataset_id: str) -> str:
     """Server-generated, collision-free view name (uuid hex is safe)."""
-    return f"ds_{dataset_id}"
+    clean_id = dataset_id[3:] if dataset_id.startswith("ds_") else dataset_id
+    return f"ds_{clean_id}"
 
 
 def _quote_literal(value: str) -> str:
@@ -38,8 +39,9 @@ def register(dataset_id: str, parquet_path: str) -> str:
     """Register a normalized Parquet file as a DuckDB view. Lazy (view)."""
     if not dataset_id:
         raise ValueError("dataset_id must be provided and non-empty")
+    clean_id = dataset_id[3:] if dataset_id.startswith("ds_") else dataset_id
     conn = get_conn()
-    view = view_name(dataset_id)
+    view = view_name(clean_id)
     quoted = _quote_literal(parquet_path)
     conn.execute(
         f'CREATE OR REPLACE VIEW "{view}" AS '
@@ -52,8 +54,9 @@ def ensure_view(dataset_id: str, parquet_path: Optional[str] = None) -> str:
     """Ensure DuckDB view exists for dataset_id, dynamically registering if needed."""
     if not dataset_id:
         raise ValueError("dataset_id must be provided and non-empty")
+    clean_id = dataset_id[3:] if dataset_id.startswith("ds_") else dataset_id
     conn = get_conn()
-    view = view_name(dataset_id)
+    view = view_name(clean_id)
     try:
         conn.execute(f'SELECT 1 FROM "{view}" LIMIT 1')
         return view
@@ -65,11 +68,11 @@ def ensure_view(dataset_id: str, parquet_path: Optional[str] = None) -> str:
         path_to_use = str(parquet_path)
     else:
         from ..config import settings
-        # Search DATA_DIR
-        candidates = list(settings.DATA_DIR.glob(f"**/{dataset_id}.parquet"))
+        # Search DATA_DIR for clean_id or dataset_id
+        candidates = list(settings.DATA_DIR.glob(f"**/{clean_id}.parquet")) + list(settings.DATA_DIR.glob(f"**/{dataset_id}.parquet"))
         if not candidates:
             # Search DATASETS_DIR
-            candidates = list(settings.DATASETS_DIR.glob(f"**/{dataset_id}.parquet"))
+            candidates = list(settings.DATASETS_DIR.glob(f"**/{clean_id}.parquet")) + list(settings.DATASETS_DIR.glob(f"**/{dataset_id}.parquet"))
         if candidates:
             path_to_use = str(candidates[0])
         else:
@@ -81,7 +84,8 @@ def ensure_view(dataset_id: str, parquet_path: Optional[str] = None) -> str:
                     with open(meta_path, "r", encoding="utf-8") as f:
                         docs = json.load(f)
                         for d in docs:
-                            if d.get("dataset_id") == dataset_id:
+                            d_id = d.get("dataset_id", "")
+                            if d_id in (dataset_id, clean_id):
                                 norm = d.get("normalized_path")
                                 if norm and Path(norm).exists():
                                     path_to_use = str(norm)
@@ -94,7 +98,7 @@ def ensure_view(dataset_id: str, parquet_path: Optional[str] = None) -> str:
             f"No parquet file found for dataset '{dataset_id}' on disk."
         )
 
-    return register(dataset_id, path_to_use)
+    return register(clean_id, path_to_use)
 
 
 def unregister(dataset_id: str) -> None:

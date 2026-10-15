@@ -75,13 +75,49 @@ async def post_dashboard_analytics(req: AnalyticsRequest) -> DashboardAnalyticsP
 
 
 @router.get("/filters", response_model=FilterDimensions)
-async def get_dashboard_filters(dataset_id: str = Query(..., description="Target dataset ID")) -> FilterDimensions:
+async def get_dashboard_filters(
+    dataset_id: str = Query(..., description="Target dataset ID"),
+    year: Optional[int] = Query(None),
+    quarter: Optional[str] = Query(None),
+    month: Optional[int] = Query(None),
+    team: Optional[str] = Query(None),
+    location: Optional[str] = Query(None),
+    primary_col: Optional[str] = Query(None),
+    secondary_col: Optional[str] = Query(None),
+) -> FilterDimensions:
     """Get dynamic cascading filter dimensions for the dataset."""
     try:
-        dims = await run_in_threadpool(get_filter_dimensions, dataset_id=dataset_id)
+        filter_ctx = FilterContext(
+            year=year,
+            quarter=quarter,
+            month=month,
+            team=team,
+            location=location,
+            primary_col=primary_col,
+            secondary_col=secondary_col,
+        )
+        dims = await run_in_threadpool(get_filter_dimensions, dataset_id=dataset_id, filter_ctx=filter_ctx)
         return dims
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+    except Exception as exc:
+        logger.error("Failed to fetch filter dimensions: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Filter extraction error: {str(exc)}")
+
+
+class FilterDimensionsRequest(BaseModel):
+    dataset_id: str
+    filter_context: Optional[FilterContext] = None
+
+
+@router.post("/filters", response_model=FilterDimensions)
+async def post_dashboard_filters(req: FilterDimensionsRequest) -> FilterDimensions:
+    """Post filter context to retrieve dynamic cascading filter dimensions."""
+    try:
+        dims = await run_in_threadpool(get_filter_dimensions, dataset_id=req.dataset_id, filter_ctx=req.filter_context)
+        return dims
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Dataset {req.dataset_id} not found")
     except Exception as exc:
         logger.error("Failed to fetch filter dimensions: %s", exc)
         raise HTTPException(status_code=500, detail=f"Filter extraction error: {str(exc)}")

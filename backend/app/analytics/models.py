@@ -21,8 +21,10 @@ class FilterContext(BaseModel):
     year: Optional[int] = None
     quarter: Optional[str] = None  # Q1, Q2, Q3, Q4
     month: Optional[int] = None    # 1 to 12
-    team: Optional[str] = None     # Primary category filter
-    location: Optional[str] = None # Secondary attribute filter
+    team: Optional[str] = None     # Primary category filter value
+    location: Optional[str] = None # Secondary attribute filter value
+    primary_col: Optional[str] = None   # Explicit column name for primary dimension
+    secondary_col: Optional[str] = None # Explicit column name for secondary dimension
     search_query: Optional[str] = None
 
 
@@ -166,6 +168,12 @@ class FilterDimensions(BaseModel):
     locations: List[str] = Field(default_factory=list)
     date_min: Optional[str] = None
     date_max: Optional[str] = None
+    primary_dim_col: Optional[str] = None
+    primary_dim_label: Optional[str] = None
+    secondary_dim_col: Optional[str] = None
+    secondary_dim_label: Optional[str] = None
+    total_records: int = 0
+    filtered_records: int = 0
 
 
 class DrilldownRequest(BaseModel):

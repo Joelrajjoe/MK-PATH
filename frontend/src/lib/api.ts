@@ -463,7 +463,17 @@ export const api = {
       }
       return await res.json();
     },
-    filters: async (datasetId: string): Promise<any> => {
+    filters: async (datasetId: string, filterContext?: any): Promise<any> => {
+      try {
+        const res = await fetch(`${API_BASE}/dashboard/filters`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dataset_id: datasetId, filter_context: filterContext }),
+        });
+        if (res.ok) return await res.json();
+      } catch {
+        // fallback to GET
+      }
       const res = await fetch(`${API_BASE}/dashboard/filters?dataset_id=${datasetId}`);
       if (!res.ok) throw new Error('Failed to fetch filter dimensions');
       return await res.json();

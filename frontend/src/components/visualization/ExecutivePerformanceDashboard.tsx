@@ -137,13 +137,29 @@ export default function ExecutivePerformanceDashboard({
     return () => { isMounted = false }
   }, [projectId, activeDatasetId])
 
-  // 2. Fetch Filter Dimensions whenever datasetId changes
+  // Sync activeDatasetId if parent initialDatasetId changes (e.g. uploading or selecting new dataset)
+  useEffect(() => {
+    if (initialDatasetId && initialDatasetId !== activeDatasetId) {
+      setActiveDatasetId(initialDatasetId)
+      setFilterYear('all')
+      setFilterQuarter('all')
+      setFilterTeam('all')
+      setFilterLocation('all')
+      setSearchQuery('')
+    }
+  }, [initialDatasetId, activeDatasetId])
+
+  // 2. Fetch Filter Dimensions whenever datasetId or higher-level filter changes (cascading)
   useEffect(() => {
     if (!activeDatasetId) return
     let isMounted = true
     const fetchFilters = async () => {
       try {
-        const dims = await api.dashboard.filters(activeDatasetId)
+        const filterContext: any = {}
+        if (filterYear !== 'all') filterContext.year = parseInt(filterYear, 10)
+        if (filterQuarter !== 'all') filterContext.quarter = filterQuarter
+        if (filterTeam !== 'all') filterContext.team = filterTeam
+        const dims = await api.dashboard.filters(activeDatasetId, filterContext)
         if (isMounted) {
           setFilterDimensions(dims)
         }
@@ -153,7 +169,7 @@ export default function ExecutivePerformanceDashboard({
     }
     fetchFilters()
     return () => { isMounted = false }
-  }, [activeDatasetId])
+  }, [activeDatasetId, filterYear, filterQuarter, filterTeam])
 
   // 3. Fetch Verified Dashboard Analytics
   const fetchAnalytics = useCallback(async () => {
@@ -595,7 +611,9 @@ export default function ExecutivePerformanceDashboard({
                 onChange={(e) => setFilterTeam(e.target.value)}
                 className="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 max-w-[160px] truncate"
               >
-                <option value="all">All Teams / Categories</option>
+                <option value="all">
+                  {filterDimensions?.primary_dim_label ? `All ${filterDimensions.primary_dim_label}s` : 'All Categories'}
+                </option>
                 {filterDimensions?.teams?.map((t: string) => (
                   <option key={t} value={t}>{t}</option>
                 ))}
@@ -607,7 +625,9 @@ export default function ExecutivePerformanceDashboard({
                 onChange={(e) => setFilterLocation(e.target.value)}
                 className="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 max-w-[160px] truncate"
               >
-                <option value="all">All Locations</option>
+                <option value="all">
+                  {filterDimensions?.secondary_dim_label ? `All ${filterDimensions.secondary_dim_label}s` : 'All Locations'}
+                </option>
                 {filterDimensions?.locations?.map((l: string) => (
                   <option key={l} value={l}>{l}</option>
                 ))}
