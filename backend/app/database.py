@@ -123,6 +123,11 @@ class LocalFallbackCursor:
         except StopIteration:
             raise StopAsyncIteration
 
+    async def to_list(self, length: Optional[int] = None) -> List[Dict[str, Any]]:
+        end = self._skip_count + (min(self._limit_count, length) if length is not None else self._limit_count)
+        sliced = self._docs[self._skip_count:end]
+        return [self._apply_projection(d) for d in sliced]
+
     def _apply_projection(self, doc: Dict[str, Any]) -> Dict[str, Any]:
         if not self._projection:
             return dict(doc)
@@ -131,6 +136,51 @@ class LocalFallbackCursor:
             if v == 0 and k in out:
                 out.pop(k)
         return out
+
+
+class LocalDeleteResult:
+    """Mimics PyMongo/Motor DeleteResult."""
+
+    def __init__(self, deleted_count: int = 0, acknowledged: bool = True):
+        self.deleted_count = deleted_count
+        self.acknowledged = acknowledged
+
+    @property
+    def raw_result(self) -> Dict[str, Any]:
+        return {"n": self.deleted_count, "ok": 1.0}
+
+
+class LocalUpdateResult:
+    """Mimics PyMongo/Motor UpdateResult."""
+
+    def __init__(
+        self,
+        matched_count: int = 0,
+        modified_count: int = 0,
+        upserted_id: Any = None,
+        acknowledged: bool = True,
+        doc: Optional[Dict[str, Any]] = None,
+    ):
+        self.matched_count = matched_count
+        self.modified_count = modified_count
+        self.upserted_id = upserted_id
+        self.acknowledged = acknowledged
+        self._doc = doc or {}
+
+    @property
+    def raw_result(self) -> Dict[str, Any]:
+        return {
+            "n": self.matched_count,
+            "nModified": self.modified_count,
+            "upserted": self.upserted_id,
+            "ok": 1.0,
+        }
+
+    def __getitem__(self, key: str) -> Any:
+        return self._doc[key]
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._doc.get(key, default)
 
 
 class LocalFallbackCollection:
@@ -164,12 +214,63 @@ class LocalFallbackCollection:
         if not query:
             return True
         for k, v in query.items():
+            if k == "$or" and isinstance(v, list):
+                if not any(self._matches(doc, cond) for cond in v):
+                    return False
+                continue
+            if k == "$and" and isinstance(v, list):
+                if not all(self._matches(doc, cond) for cond in v):
+                    return False
+                continue
             if k.startswith("$"):
                 continue
+
             doc_val = doc.get(k)
+            if isinstance(v, dict):
+                matched_ops = True
+                for op, val in v.items():
+                    if op == "$in":
+                        if doc_val not in val:
+                            matched_ops = False
+                            break
+                    elif op == "$nin":
+                        if doc_val in val:
+                            matched_ops = False
+                            break
+                    elif op == "$ne":
+                        if doc_val == val:
+                            matched_ops = False
+                            break
+                    elif op == "$gt":
+                        if doc_val is None or not (doc_val > val):
+                            matched_ops = False
+                            break
+                    elif op == "$gte":
+                        if doc_val is None or not (doc_val >= val):
+                            matched_ops = False
+                            break
+                    elif op == "$lt":
+                        if doc_val is None or not (doc_val < val):
+                            matched_ops = False
+                            break
+                    elif op == "$lte":
+                        if doc_val is None or not (doc_val <= val):
+                            matched_ops = False
+                            break
+                    elif op == "$exists":
+                        if (k in doc) != bool(val):
+                            matched_ops = False
+                            break
+                if not matched_ops:
+                    return False
+                continue
+
             if doc_val is None and v is not None:
                 return False
-            if str(doc_val) != str(v) and doc_val != v:
+            if type(doc_val) is bool or type(v) is bool:
+                if doc_val is not v:
+                    return False
+            elif str(doc_val) != str(v) and doc_val != v:
                 return False
         return True
 
@@ -224,18 +325,135 @@ class LocalFallbackCollection:
         docs = self._read_docs()
         return sum(1 for d in docs if self._matches(d, query))
 
-    async def update_one(self, query: Dict[str, Any], update: Dict[str, Any]) -> None:
+    async def delete_one(self, query: Dict[str, Any]) -> LocalDeleteResult:
+        docs = self._read_docs()
+        found_idx = -1
+        for i, d in enumerate(docs):
+            if self._matches(d, query):
+                found_idx = i
+                break
+        if found_idx >= 0:
+            docs.pop(found_idx)
+            self._write_docs(docs)
+            return LocalDeleteResult(deleted_count=1, acknowledged=True)
+        return LocalDeleteResult(deleted_count=0, acknowledged=True)
+
+    async def delete_many(self, query: Dict[str, Any]) -> LocalDeleteResult:
+        docs = self._read_docs()
+        kept = []
+        deleted_count = 0
+        for d in docs:
+            if self._matches(d, query):
+                deleted_count += 1
+            else:
+                kept.append(d)
+        if deleted_count > 0:
+            self._write_docs(kept)
+        return LocalDeleteResult(deleted_count=deleted_count, acknowledged=True)
+
+    async def find_one_and_delete(
+        self,
+        query: Dict[str, Any],
+        projection: Optional[Dict[str, Any]] = None,
+        sort: Any = None
+    ) -> Optional[Dict[str, Any]]:
+        docs = self._read_docs()
+        filtered_indices = [i for i, d in enumerate(docs) if self._matches(d, query)]
+        if not filtered_indices:
+            return None
+        if sort:
+            cursor = LocalFallbackCursor([docs[i] for i in filtered_indices])
+            cursor.sort(sort)
+            chosen_doc = cursor._docs[0] if cursor._docs else None
+            if chosen_doc:
+                for idx in filtered_indices:
+                    if docs[idx] == chosen_doc or docs[idx].get("_id") == chosen_doc.get("_id"):
+                        target_idx = idx
+                        break
+                else:
+                    target_idx = filtered_indices[0]
+            else:
+                target_idx = filtered_indices[0]
+        else:
+            target_idx = filtered_indices[0]
+
+        deleted_doc = docs.pop(target_idx)
+        self._write_docs(docs)
+        if projection:
+            cursor = LocalFallbackCursor([deleted_doc], projection)
+            return cursor._apply_projection(deleted_doc)
+        return deleted_doc
+
+    async def update_one(self, query: Dict[str, Any], update: Dict[str, Any], upsert: bool = False) -> LocalUpdateResult:
         docs = self._read_docs()
         set_fields = update.get("$set", {})
         inc_fields = update.get("$inc", {})
+        unset_fields = update.get("$unset", {})
+        matched = 0
+        modified = 0
         for d in docs:
             if self._matches(d, query):
+                matched = 1
                 for k, v in set_fields.items():
                     d[k] = v
+                    modified = 1
                 for k, v in inc_fields.items():
                     d[k] = d.get(k, 0) + v
+                    modified = 1
+                for k in unset_fields.keys():
+                    if k in d:
+                        del d[k]
+                        modified = 1
                 break
-        self._write_docs(docs)
+        if matched == 0 and upsert:
+            new_doc = dict(query)
+            if "_id" not in new_doc:
+                new_doc["_id"] = str(uuid.uuid4().hex)
+            for k, v in set_fields.items():
+                new_doc[k] = v
+            for k, v in inc_fields.items():
+                new_doc[k] = v
+            docs.append(new_doc)
+            self._write_docs(docs)
+            return LocalUpdateResult(matched_count=0, modified_count=0, upserted_id=new_doc["_id"], acknowledged=True)
+        if modified > 0:
+            self._write_docs(docs)
+        return LocalUpdateResult(matched_count=matched, modified_count=modified, acknowledged=True)
+
+    async def update_many(self, query: Dict[str, Any], update: Dict[str, Any], upsert: bool = False) -> LocalUpdateResult:
+        docs = self._read_docs()
+        set_fields = update.get("$set", {})
+        inc_fields = update.get("$inc", {})
+        unset_fields = update.get("$unset", {})
+        matched_count = 0
+        modified_count = 0
+        for d in docs:
+            if self._matches(d, query):
+                matched_count += 1
+                for k, v in set_fields.items():
+                    d[k] = v
+                    modified_count += 1
+                for k, v in inc_fields.items():
+                    d[k] = d.get(k, 0) + v
+                    modified_count += 1
+                for k in unset_fields.keys():
+                    if k in d:
+                        del d[k]
+                        modified_count += 1
+        if matched_count == 0 and upsert:
+            new_doc = dict(query)
+            if "_id" not in new_doc:
+                new_doc["_id"] = str(uuid.uuid4().hex)
+            for k, v in set_fields.items():
+                new_doc[k] = v
+            for k, v in inc_fields.items():
+                new_doc[k] = v
+            docs.append(new_doc)
+            self._write_docs(docs)
+            return LocalUpdateResult(matched_count=0, modified_count=0, upserted_id=new_doc["_id"], acknowledged=True)
+        if modified_count > 0:
+            self._write_docs(docs)
+        return LocalUpdateResult(matched_count=matched_count, modified_count=modified_count, acknowledged=True)
 
     async def replace_one(self, query: Dict[str, Any], replacement: Dict[str, Any], upsert: bool = False) -> Any:
         docs = self._read_docs()
@@ -255,6 +473,23 @@ class LocalFallbackCollection:
             docs.append(rep_copy)
         self._write_docs(docs)
         return replacement
+
+    async def distinct(self, key: str, query: Optional[Dict[str, Any]] = None) -> List[Any]:
+        docs = self._read_docs()
+        if query:
+            docs = [d for d in docs if self._matches(d, query)]
+        vals = set()
+        for d in docs:
+            if key in d and d[key] is not None:
+                vals.add(d[key])
+        return list(vals)
+
+    async def drop(self) -> None:
+        if self.filepath.exists():
+            try:
+                self.filepath.unlink()
+            except Exception:
+                pass
 
     async def create_index(self, keys: Any, **kwargs) -> str:
         return "local_index"
@@ -276,6 +511,17 @@ class LocalFallbackDB:
         filepath = self.metadata_dir / f"{name}.json"
         if not filepath.exists():
             filepath.write_text("[]", encoding="utf-8")
+
+    async def drop_collection(self, name: str) -> None:
+        filepath = self.metadata_dir / f"{name}.json"
+        if filepath.exists():
+            try:
+                filepath.unlink()
+            except Exception:
+                pass
+
+    async def list_collection_names(self) -> List[str]:
+        return [p.stem for p in self.metadata_dir.glob("*.json")]
 
 
 class DatabaseManager:
