@@ -9,16 +9,21 @@ import { api } from '@/lib/api'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import PlanMultiverseStabilityGate from '@/components/verification/PlanMultiverseStabilityGate'
 import FaultInjectionBenchmarkConsole from '@/components/verification/FaultInjectionBenchmarkConsole'
+import AttestationEvidencePanel from '@/components/attestation/AttestationEvidencePanel'
+import LineageExplorer from '@/components/attestation/LineageExplorer'
+import AttestationStatusBadge from '@/components/attestation/AttestationStatusBadge'
 
 export default function VerificationCenter() {
   const { projectId } = useParams<{ projectId: string }>()
-  const [activeTab, setActiveTab] = useState<'gates' | 'pmsg' | 'benchmark'>('gates')
+  const [activeTab, setActiveTab] = useState<'gates' | 'pmsg' | 'benchmark' | 'attestation'>('gates')
   const [selectedGate, setSelectedGate] = useState<string | null>(null)
   const [verificationData, setVerificationData] = useState<any>(null)
+  const [envelope, setEnvelope] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [runs, setRuns] = useState<any[]>([])
   const [selectedRunId, setSelectedRunId] = useState<string>('')
   const [selectedDataset, setSelectedDataset] = useState<any>(null)
+
 
   const loadVerificationData = async (targetRun?: string) => {
     setLoading(true)
@@ -39,11 +44,19 @@ export default function VerificationCenter() {
       // 3. Fetch verification gates
       const res = await api.verification.getGates(projectId || 'project_1', effectiveRunId, qScore)
       setVerificationData(res)
+
+      // 4. Fetch attestation envelopes for project
+      if (projectId) {
+        const envList = await api.attestations.list(projectId).catch(() => [])
+        const matched = envList.find((e: any) => e.run_id === effectiveRunId) || (envList.length > 0 ? envList[0] : null)
+        setEnvelope(matched)
+      }
     } catch (err) {
       console.error('Failed to load verification data:', err)
     } finally {
       setLoading(false)
     }
+
   }
 
   useEffect(() => {
@@ -119,6 +132,13 @@ export default function VerificationCenter() {
             </div>
           )}
 
+          {envelope && (
+            <AttestationStatusBadge
+              status={envelope.attestation_status}
+              keyId={envelope.attestation?.key_id}
+            />
+          )}
+
           {selectedDataset && (
             <Badge variant="outline" className="px-2.5 py-1 text-xs font-normal bg-muted/40">
               {selectedDataset.name || selectedDataset.original_filename || 'Dataset'} (QS: {selectedDataset.qualityScore ?? selectedDataset.profile?.quality_score ?? 100})
@@ -126,6 +146,7 @@ export default function VerificationCenter() {
           )}
         </div>
       </div>
+
 
       <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)} className="space-y-6">
         <TabsList className="bg-muted/60 p-1">
@@ -138,7 +159,11 @@ export default function VerificationCenter() {
           <TabsTrigger value="benchmark" className="gap-2 font-semibold text-xs">
             <ShieldAlert className="h-4 w-4" /> Fault-Injection Benchmark (FIB-VG)
           </TabsTrigger>
+          <TabsTrigger value="attestation" className="gap-2 font-semibold text-xs">
+            <ShieldCheck className="h-4 w-4 text-indigo-400" /> Attested Result Envelope & Lineage (ARE-HL)
+          </TabsTrigger>
         </TabsList>
+
 
         <TabsContent value="gates" className="space-y-6 mt-0">
           <div className="grid md:grid-cols-3 gap-6">
@@ -250,7 +275,19 @@ export default function VerificationCenter() {
         <TabsContent value="benchmark" className="mt-0">
           <FaultInjectionBenchmarkConsole projectId={projectId!} />
         </TabsContent>
+
+        <TabsContent value="attestation" className="mt-0 space-y-6">
+          <AttestationEvidencePanel
+            envelope={envelope}
+            onReverified={(rep) => console.log('Reverified envelope:', rep)}
+          />
+          <LineageExplorer
+            runId={selectedRunId}
+            projectId={projectId!}
+          />
+        </TabsContent>
       </Tabs>
+
     </div>
   )
 }

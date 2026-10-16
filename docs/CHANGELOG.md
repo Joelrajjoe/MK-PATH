@@ -4,6 +4,29 @@ All notable changes to the Executive Performance Management Dashboard and analyt
 
 ---
 
+## [2.5.0] - 2026-10-16
+
+### Added
+- **Option C — Attested Result Envelopes with Healing Lineage (ARE-HL) Implementation:**
+  - **Cryptographic Provenance Engine (`backend/app/attestation/`):** Implemented strongly typed Pydantic models conforming to `are-hl-v1.0` schema standard, binding SourceIdentity, TransformationLineage, AnalyticalResultProvenance, VerificationProvenance, and ArtifactProvenance.
+  - **RFC 8785 Canonicalization & Streaming Hashing (`hashing.py`):** IETF RFC 8785 JSON Canonicalization Scheme (JCS) serializer with deterministic key sorting, whitespace stripping, and float normalization. Chunked 64 KB streaming SHA-256 for files and Parquet metadata.
+  - **Digital Signatures & Key Management (`crypto.py`):** Ed25519 (RFC 8032) and RSA-PSS (RFC 8017) asymmetric signatures. In-memory keystore with isolated key generation, rotation, retirement, and revocation. Fail-closed public key registry.
+  - **Non-Destructive Healing & Source Immutability (`backend/app/healing/engine.py`):** Implemented strict immutability invariant. Source datasets are strictly read-only; healing produces isolated Parquet derivatives (`data/derived/*.parquet`). Post-healing assertions verify 0 bytes changed in parent dataset.
+  - **Tamper-Evident Hash-Chained Lineage Graph (`lineage.py`):** Sequential event chaining linking all workflow phases via `SHA256(canonical(event) || prev_hash)`. Signed chain-head checkpoints (`ChainCheckpoint`) anchored in MongoDB Atlas.
+  - **Artifact Deployment Readiness Gate (`backend/app/engineering/ml_engineer.py`):** Manifest generation recording streaming SHA-256 hashes of all model binaries and docs. `verify_artifact_deployment_readiness` strictly blocks downloads and deployments on byte mismatch.
+  - **FastAPI Attestation Router (`backend/app/routers/attestations.py`):** Endpoints for envelope creation, retrieval, independent verification, lineage inspection, chain verification, chain checkpointing, artifact verification, and public key discovery.
+  - **MongoDB Atlas Integration (`database.py`):** Collections `attestation_envelopes`, `lineage_events`, and `lineage_checkpoints` registered in `CORE_COLLECTIONS` and `JUSTIFIED_INDEXES`. Fail-closed on required Atlas durability.
+  - **Interactive Frontend Provenance Experience:**
+    - `AttestationStatusBadge`: Visual seal indicator displaying VALID, SIGNED, BLOCKED, or TAMPERED status.
+    - `AttestationEvidencePanel`: Expandable cryptographic audit panel showing key IDs, payload hashes, digital signatures, and reverification triggers.
+    - `LineageExplorer`: Interactive chronological event graph showing sequential hash chaining, event types, inputs, outputs, and continuity status.
+    - Verification Center, Healing Center, and Artifact Center integrations with hash verification actions.
+  - **Automated Test Suite:**
+    - `backend/tests/test_attestation_security.py`: 18 tests covering canonicalization, streaming hashing, Ed25519/RSA-PSS signing, signature tampering, payload bit-flipping, unknown/revoked keys, lineage chain breaking, cycle detection, gate failure blocking, and artifact tampering detection.
+    - `backend/tests/test_are_hl_e2e.py`: 2 end-to-end analytical lifecycle and REST API tests. 100% pass rate.
+
+---
+
 ## [2.4.0] - 2026-10-15
 
 ### Added

@@ -134,3 +134,14 @@ def generate_deployment_artifacts(project_id: str, verification_result: Dict[str
 1. `deployment_permitted` is evaluated to `False`.
 2. `blocked` is evaluated to `True`.
 3. Zero files (`deployment_manifest.json`, `model_api.py`) are created in the project's artifact directory.
+
+---
+
+## 4. Cryptographic Attestation & Artifact Integrity Gate (Option C ARE-HL)
+
+Option C introduces Gate 8: **Cryptographic Attestation & Artifact Integrity Verification**:
+- **Target Files**: `backend/app/attestation/service.py`, `backend/app/engineering/ml_engineer.py`
+- **Contract**:
+  1. No analytical result may receive an active `SIGNED` attestation envelope if any mandatory or critical verification gate evaluated to `FAIL`. If a critical failure is detected, the envelope is permanently sealed with `attestation_status: "BLOCKED"`.
+  2. Artifact downloads and container deployments are gated by `verify_artifact_deployment_readiness`. All files (`model.pkl`, `api/main.py`, `api/schema.py`, `README.md`) must strictly match the streaming SHA-256 hashes recorded in `metadata.json` and attested in the `ArtifactProvenance` block of the envelope.
+  3. Any physical byte tampering or corruption on disk transitions the artifact status to `TAMPERED_BLOCKED` and revokes download/deployment authorization.

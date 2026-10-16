@@ -34,6 +34,12 @@ class HealingEvent(BaseModel):
     row_count: Optional[int] = 0
     column_count: Optional[int] = 0
     derived_columns: Optional[List[str]] = []
+    parent_dataset_id: Optional[str] = ""
+    parent_content_hash: Optional[str] = ""
+    derived_content_hash: Optional[str] = ""
+    parameters_digest: Optional[str] = ""
+    immutability_verified: bool = True
+
 
 
 def generate_healing_plan(dataset_id: str, profile: Any) -> TransformationPlan:
@@ -123,18 +129,46 @@ def apply_healing(
     dataset: pd.DataFrame,
     plan: TransformationPlan,
     dataset_id: str,
-    profile: Optional[Dict[str, Any]] = None
+    profile: Optional[Dict[str, Any]] = None,
+    parent_file_path: Optional[str] = None,
 ) -> HealingEvent:
     """
     Apply robust autonomous data preprocessing on actual dataframe and calculate real before/after metrics.
+    Enforces source immutability by calculating and verifying parent dataset SHA-256 content hashes.
     """
     logger.info("Applying autonomous data preprocessing & healing transformations.")
+    from ..attestation.hashing import hash_bytes, hash_file_streaming, hash_json_object
+
+    # 1. Compute parent content hash and verify immutability
+    parent_content_hash = ""
+    target_parent_path = None
+    if parent_file_path and Path(parent_file_path).exists():
+        target_parent_path = Path(parent_file_path)
+    else:
+        # Check standard data locations
+        candidate = settings.DATASETS_DIR / f"{dataset_id}.parquet"
+        if not candidate.exists():
+            for p in settings.DATA_DIR.glob(f"**/{dataset_id}.parquet"):
+                candidate = p
+                break
+        if candidate.exists():
+            target_parent_path = candidate
+
+    if target_parent_path and target_parent_path.exists():
+        parent_content_hash = hash_file_streaming(target_parent_path)
+    else:
+        # In-memory dataframe hash
+        mem_bytes = dataset.to_parquet()
+        parent_content_hash = hash_bytes(mem_bytes, "sha256")
+
+    initial_parent_hash = parent_content_hash
 
     profile = profile or {}
     before_score = float(profile.get("quality_score", 85.0))
     if before_score >= 100.0 and plan.columns_affected:
         before_score = 85.0  # Real baseline before healing
 
+    # Ensure source dataset is not mutated
     derived_df = dataset.copy()
     improvements = []
 
@@ -223,6 +257,31 @@ def apply_healing(
     derived_path = derived_dir / f"{derived_id}.parquet"
     derived_df.to_parquet(derived_path)
 
+    # Compute derived dataset content hash
+    derived_content_hash = hash_file_streaming(derived_path)
+
+    # Re-verify parent dataset immutability
+    post_parent_hash = ""
+    if target_parent_path and target_parent_path.exists():
+        post_parent_hash = hash_file_streaming(target_parent_path)
+    else:
+        post_parent_hash = hash_bytes(dataset.to_parquet(), "sha256")
+
+    immutability_ok = (post_parent_hash == initial_parent_hash)
+    if not immutability_ok:
+        raise RuntimeError(
+            f"Source dataset immutability violation! Initial hash {initial_parent_hash} changed to {post_parent_hash}."
+        )
+
+    # Parameter digest for the healing operation
+    param_digest = hash_json_object({
+        "plan": plan.model_dump(),
+        "before_score": before_score,
+        "init_rows": init_rows,
+        "final_rows": len(derived_df),
+        "columns_affected": plan.columns_affected,
+    })
+
     report = BeforeAfterQualityReport(
         before_score=round(before_score, 1),
         after_score=round(after_score, 1),
@@ -238,5 +297,11 @@ def apply_healing(
         timestamp=datetime.now(timezone.utc).isoformat(),
         row_count=len(derived_df),
         column_count=len(derived_df.columns),
-        derived_columns=list(derived_df.columns)
+        derived_columns=list(derived_df.columns),
+        parent_dataset_id=dataset_id,
+        parent_content_hash=initial_parent_hash,
+        derived_content_hash=derived_content_hash,
+        parameters_digest=param_digest,
+        immutability_verified=immutability_ok,
     )
+

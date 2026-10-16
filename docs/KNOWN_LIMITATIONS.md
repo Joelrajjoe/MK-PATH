@@ -44,3 +44,19 @@ This document honestly outlines the current technical boundaries, architectural 
 - **Constraint**: Scenarios are executed sequentially in isolated execution blocks rather than parallel worker processes.
 - **Rationale**: Sequential execution prevents race conditions in shared verifier state, ensures deterministic timestamps, and enforces strict memory containment on the host machine without consuming unnecessary CPU or disk bandwidth.
 
+---
+
+## 3. Option C Attestation & Cryptographic Provenance Boundaries
+
+### A. Fail-Closed Network Isolation for Attestation Durability
+- **Constraint**: If `require_atlas=True` is specified during envelope creation, the system requires active write confirmation to MongoDB Atlas (`attestation_envelopes` collection).
+- **Behavior**: If MongoDB Atlas cloud connectivity is down or times out, the service raises `AtlasPersistenceError` and fails closed. It does **NOT** write un-audited fallback files to local disk or pretend the envelope is durably anchored in cloud storage.
+
+### B. Ephemeral Key Lifetime in Local Development
+- **Constraint**: In non-production environments with `MKPATH_DEV_SIGNING=true`, an isolated ephemeral Ed25519 keypair is dynamically generated in memory at server startup.
+- **Limitation**: If the server process restarts without configuring `MKPATH_SIGNING_PRIVATE_KEY` in `.env`, a new keypair is generated. Envelopes signed during the prior process run will report `UNKNOWN_KEY` unless public keys were exported and persisted to the public trust store.
+
+### C. Physical File Availability During Reverification
+- **Constraint**: When verifying an envelope with `verify_content_files=True`, the verifier checks that source files and derived Parquet files exist at their registered paths on disk.
+- **Behavior**: If files have been archived, relocated, or purged due to retention policies, the verifier flags `MISSING_CONTENT` for the missing physical assets while continuing to verify the digital signature over the envelope metadata.
+

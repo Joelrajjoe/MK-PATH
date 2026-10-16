@@ -6,7 +6,7 @@ import os
 import pickle
 import shutil
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
@@ -254,16 +254,124 @@ def predict(req: InferenceRequest):
     val_res = validate_artifact(artifact_dir, feature_schema)
     logger.info(f"Artifact validation for {project_id}/{run_id}: {val_res}")
 
+    # Compute cryptographic content hashes for all generated files (Phase 7)
+    from ..attestation.hashing import hash_file_streaming
+    artifact_content_hashes: Dict[str, str] = {}
+    for rel_path in ["model/model.pkl", "api/main.py", "api/schema.py", "MODEL_CARD.md", "README.md"]:
+        fpath = artifact_dir / rel_path
+        if fpath.exists():
+            artifact_content_hashes[rel_path] = hash_file_streaming(fpath)
+
     meta = {
         "artifact_dir": str(artifact_dir),
         "model_version": model_version,
         "run_id": run_id,
         "status": val_res["status"],
         "validation": val_res,
-        "downloadable": (val_res["status"] == "PASS")
+        "downloadable": (val_res["status"] == "PASS"),
+        "artifact_content_hashes": artifact_content_hashes,
+        "model_card_hash": artifact_content_hashes.get("MODEL_CARD.md", ""),
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
     
     with open(artifact_dir / "metadata.json", "w", encoding="utf-8") as f:
         f.write(json.dumps(meta, indent=2))
 
     return meta
+
+
+def verify_artifact_deployment_readiness(
+    project_id: str,
+    run_id: str,
+    expected_hashes: Optional[Dict[str, str]] = None,
+    artifact_dir_override: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """
+    Exhaustively verify artifact integrity before download or deployment (Phase 7):
+    1. Confirm artifact directory and files exist.
+    2. Recompute streaming SHA-256 hashes of all files.
+    3. Detect any tampering or byte corruption.
+    4. Block deployment if hash mismatch or missing files detected.
+    """
+    from ..attestation.hashing import hash_file_streaming
+
+    artifact_dir = artifact_dir_override or (settings.ARTIFACTS_DIR / project_id / run_id)
+    if not artifact_dir.exists():
+        return {
+            "status": "BLOCKED",
+            "deployable": False,
+            "downloadable": False,
+            "reason": f"Artifact directory does not exist: {artifact_dir}",
+            "mismatches": [],
+        }
+
+    meta_file = artifact_dir / "metadata.json"
+    if not meta_file.exists():
+        return {
+            "status": "BLOCKED",
+            "deployable": False,
+            "downloadable": False,
+            "reason": "Artifact metadata.json is missing.",
+            "mismatches": [],
+        }
+
+    try:
+        with open(meta_file, "r", encoding="utf-8") as f:
+            stored_meta = json.load(f)
+    except Exception as exc:
+        return {
+            "status": "BLOCKED",
+            "deployable": False,
+            "downloadable": False,
+            "reason": f"Failed to read artifact metadata: {exc}",
+            "mismatches": [],
+        }
+
+    recorded_hashes = expected_hashes or stored_meta.get("artifact_content_hashes", {})
+    if not recorded_hashes:
+        return {
+            "status": "BLOCKED",
+            "deployable": False,
+            "downloadable": False,
+            "reason": "No cryptographic content hashes recorded for artifact.",
+            "mismatches": [],
+        }
+
+    mismatches = []
+    current_hashes = {}
+
+    for rel_path, expected_hash in recorded_hashes.items():
+        fp = artifact_dir / rel_path
+        if not fp.exists():
+            mismatches.append(f"Missing artifact file: {rel_path}")
+            continue
+
+        try:
+            current_h = hash_file_streaming(fp)
+            current_hashes[rel_path] = current_h
+            if current_h != expected_hash:
+                mismatches.append(
+                    f"Hash mismatch on {rel_path}: expected {expected_hash}, found {current_h} (tampered content)."
+                )
+        except Exception as exc:
+            mismatches.append(f"Error reading {rel_path}: {exc}")
+
+    if mismatches:
+        return {
+            "status": "TAMPERED_BLOCKED",
+            "deployable": False,
+            "downloadable": False,
+            "reason": "Artifact tampering or corruption detected.",
+            "mismatches": mismatches,
+            "current_hashes": current_hashes,
+        }
+
+    return {
+        "status": "VERIFIED_READY",
+        "deployable": True,
+        "downloadable": True,
+        "reason": "All artifact files verified against attested cryptographic hashes.",
+        "mismatches": [],
+        "verified_hashes": current_hashes,
+    }
+

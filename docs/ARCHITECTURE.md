@@ -100,3 +100,55 @@ graph TD
 3. **Strict Containment**: Critical verification failures directly block downstream ML model artifact generation (`generate_deployment_artifacts`).
 4. **Cloud-Native Atlas Persistence**: Runs and scenario results are committed to MongoDB Atlas (`fib_vg_runs`, `fib_vg_scenario_results`, `fib_vg_audit_events`) with write confirmation and readback integrity checks.
 
+---
+
+## 4. Attested Result Envelopes with Healing Lineage (Option C ARE-HL) Architecture
+
+Option C establishes an enterprise cryptographic provenance, non-repudiation, and auditability layer spanning the entire analytical lifecycle:
+
+```mermaid
+graph TD
+    Raw[Raw Ingestion File] -->|Compute Streaming SHA-256| SI[SourceIdentity]
+    SI --> HE[Healing Engine]
+    HE -->|Assert Parent Immutability| Derived[Isolated Parquet Derivative]
+    HE -->|Capture DQM & Rules| TO[TransformationLineage]
+    Derived --> AE[Analysis Engine DuckDB / ML]
+    AE -->|Compute Metrics & Schema Hashes| AR[AnalyticalResultProvenance]
+    AR --> VG[Verification Gates & PMSG]
+    VG -->|Evaluate Quality, Leakage, Multiverse| VP[VerificationProvenance]
+    AE --> MLE[ML Engineer Artifact Generator]
+    MLE -->|Streaming SHA-256 Manifest| AP[ArtifactProvenance]
+    SI & TO & AR & VP & AP --> ARE[AttestedResultEnvelope Model]
+    ARE -->|RFC 8785 JCS Canonicalization| Canon[Canonical Payload Bytes]
+    Canon -->|Sign with Active Ed25519/RSA Key| Signer[Cryptographic Signer]
+    Signer -->|Digital Attestation Metadata| Sealed[Sealed ARE-HL Envelope]
+    Sealed --> Atlas[(MongoDB Atlas: attestation_envelopes)]
+    
+    subgraph Lineage Tracking
+        Ev1[DATASET_INGESTION] -->|SHA256(e2 || h1)| Ev2[HEALING_EXECUTION]
+        Ev2 -->|SHA256(e3 || h2)| Ev3[ANALYSIS_EXECUTION]
+        Ev3 -->|SHA256(e4 || h3)| Ev4[VERIFICATION_GATE_EVALUATION]
+        Ev4 --> Checkpoint[Signed Chain Checkpoint]
+    end
+```
+
+### Architectural Subsystems:
+1. **Cryptographic Core (`backend/app/attestation/crypto.py`)**:
+   - Manages Ed25519 and RSA-PSS keypairs.
+   - Maintains an in-memory keystore and a public key trust registry with support for ACTIVE, RETIRED, and REVOKED states.
+   - Enforces fail-closed verification.
+2. **Canonicalization & Streaming Hashing (`backend/app/attestation/hashing.py`)**:
+   - IETF RFC 8785 JSON Canonicalization Scheme (JCS) serializer with deterministic key sorting, whitespace stripping, and float normalization.
+   - Chunked (64 KB) streaming SHA-256 for physical files and memory buffers.
+3. **Tamper-Evident Lineage Graph (`backend/app/attestation/lineage.py`)**:
+   - Sequential event chaining linking inputs, outputs, rules, and actors via `SHA256(canonical(event) || prev_hash)`.
+   - Continuous chain traversal verification with broken-link and cycle detection.
+   - Signed chain-head checkpoints.
+4. **Attestation Service (`backend/app/attestation/service.py`)**:
+   - Central coordinator constructing strongly typed envelopes.
+   - Blocks signing and deployment if critical verification gates fail.
+   - Persists to MongoDB Atlas (`attestation_envelopes`, `lineage_events`, `lineage_checkpoints`).
+5. **Artifact Deployment Guard (`backend/app/engineering/ml_engineer.py`)**:
+   - Generates streaming SHA-256 manifests in `metadata.json`.
+   - `verify_artifact_deployment_readiness` blocks any download or deployment if artifact bytes on disk diverge from attested hashes.
+

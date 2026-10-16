@@ -32,7 +32,7 @@ def _cleanup_test_data():
     try:
         from pymongo import MongoClient
 
-        cli = MongoClient(settings.MONGODB_URI, serverSelectionTimeoutMS=5000)
+        cli = MongoClient(settings.MONGODB_URI, serverSelectionTimeoutMS=300)
         db = cli[settings.MONGODB_DATABASE]
         db.datasets.delete_many(
             {"created_at": {"$gte": SESSION_START}}
@@ -45,6 +45,15 @@ def _cleanup_test_data():
         )
         db.clarification_questions.delete_many(
             {"created_at": {"$gte": SESSION_START}}
+        )
+        db.attestation_envelopes.delete_many(
+            {"created_at": {"$gte": SESSION_START.isoformat()}}
+        )
+        db.lineage_events.delete_many(
+            {"timestamp": {"$gte": SESSION_START.isoformat()}}
+        )
+        db.lineage_checkpoints.delete_many(
+            {"timestamp": {"$gte": SESSION_START.isoformat()}}
         )
         cli.close()
     except Exception:

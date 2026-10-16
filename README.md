@@ -360,6 +360,18 @@ npm run build
 
 ---
 
+## 18. Attested Result Envelopes with Healing Lineage (Option C)
+
+MK-Path includes full cryptographic provenance and non-repudiation for every analytical result, model artifact, and healing operation:
+
+- **Attested Result Envelopes (ARE-HL)**: Strongly typed envelopes sealed with digital signatures (Ed25519 / RSA-PSS) over canonical RFC 8785 JSON bytes.
+- **Source Immutability**: Guarantees raw source datasets are never mutated during data healing. All transformations produce isolated Parquet derivatives (`data/derived/*.parquet`).
+- **Hash-Chained Lineage Graph**: Append-only event graph linking every lifecycle phase (`event_hash = SHA256(canonical(event) || prev_hash)`), verified continuously and anchored by signed chain-head checkpoints.
+- **Artifact Hash Verification**: Deployment readiness checks (`verify_artifact_deployment_readiness`) perform streaming SHA-256 checks across all generated binaries and documentation, strictly blocking tampered artifacts from download or deployment.
+- **Public Key Trust Registry**: Automated public key retrieval (`GET /api/attestations/keys/public`), key rotation, and administrative revocation.
+
+---
+
 ## License
 
 Internal proprietary software. All rights reserved.

@@ -198,6 +198,28 @@ export default function ArtifactCenter() {
                     </div>
                   )}
 
+                  {/* Cryptographic Artifact Verification (Phase 7) */}
+                  <div className="pt-2 border-t space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-muted-foreground uppercase text-[10px]">Cryptographic Provenance</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs font-mono"
+                        onClick={async () => {
+                          try {
+                            const res = await api.attestations.verifyArtifacts(projectId!, selectedArtifact.run_id)
+                            alert(res.deployable ? 'ARTIFACT INTEGRITY VERIFIED: All hashes match attested payload.' : `VERIFICATION BLOCKED: ${res.reason}\n${(res.mismatches || []).join('\n')}`)
+                          } catch (e: any) {
+                            alert('Verification failed: ' + e.message)
+                          }
+                        }}
+                      >
+                        Verify Hashes
+                      </Button>
+                    </div>
+                  </div>
+
                   <div>
                     <span className="font-semibold text-muted-foreground block uppercase text-[10px] mb-1">Serve Command</span>
                     <div className="bg-muted p-2 rounded font-mono text-[11px] flex items-center gap-2">
@@ -207,6 +229,7 @@ export default function ArtifactCenter() {
                   </div>
                 </CardContent>
               </Card>
+
             ) : (
               <Card className="p-8 text-center text-muted-foreground text-xs">
                 Select an artifact to view deployment details.

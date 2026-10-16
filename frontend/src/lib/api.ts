@@ -586,5 +586,43 @@ export const api = {
       if (!res.ok) throw new Error('Failed to compare runs');
       return await res.json();
     }
+  },
+  attestations: {
+    list: async (projectId: string): Promise<any[]> => {
+      const res = await fetch(`${API_BASE}/attestations?project_id=${projectId}`);
+      if (!res.ok) throw new Error('Failed to fetch attestations');
+      return await res.json();
+    },
+    get: async (envelopeId: string): Promise<any> => {
+      const res = await fetch(`${API_BASE}/attestations/${envelopeId}`);
+      if (!res.ok) throw new Error(`Attestation ${envelopeId} not found`);
+      return await res.json();
+    },
+    verify: async (envelopeId: string): Promise<any> => {
+      const res = await fetch(`${API_BASE}/attestations/${envelopeId}/verify`, { method: 'POST' });
+      if (!res.ok) throw new Error(`Failed to verify attestation ${envelopeId}`);
+      return await res.json();
+    },
+    getRunLineage: async (runId: string): Promise<any[]> => {
+      const res = await fetch(`${API_BASE}/attestations/lineage/runs/${runId}`);
+      if (!res.ok) throw new Error('Failed to fetch run lineage');
+      return await res.json();
+    },
+    verifyRunLineage: async (runId: string): Promise<any> => {
+      const res = await fetch(`${API_BASE}/attestations/lineage/runs/${runId}/verify`, { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to verify run lineage');
+      return await res.json();
+    },
+    verifyArtifacts: async (projectId: string, runId: string): Promise<any> => {
+      const res = await fetch(`${API_BASE}/attestations/artifacts/${projectId}/${runId}/verify`);
+      if (!res.ok) throw new Error('Failed to verify artifact deployment readiness');
+      return await res.json();
+    },
+    getPublicKeys: async (): Promise<any[]> => {
+      const res = await fetch(`${API_BASE}/attestations/keys/public`);
+      if (!res.ok) throw new Error('Failed to fetch public keys');
+      return await res.json();
+    },
   }
 };
+

@@ -244,8 +244,19 @@ export default function HealingUI() {
                     ))}
                   </div>
                 )}
+                {healingEvent?.parent_content_hash && (
+                  <div className="border-t pt-3 text-xs font-mono space-y-1 bg-muted/20 p-2 rounded">
+                    <span className="font-bold text-muted-foreground block uppercase text-[10px]">Cryptographic Lineage</span>
+                    <div className="truncate text-[10px] text-muted-foreground">Parent SHA-256: <span className="text-foreground">{healingEvent.parent_content_hash}</span></div>
+                    <div className="truncate text-[10px] text-muted-foreground">Derived SHA-256: <span className="text-foreground">{healingEvent.derived_content_hash}</span></div>
+                    <div className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 mt-1">
+                      <CheckCircle className="h-3 w-3" /> Source Immutability Verified
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
+
 
             {pastEvents.length > 0 && (
               <Card>

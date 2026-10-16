@@ -24,6 +24,8 @@ from .routers import pipeline as pipeline_router
 from .routers import stability as stability_router
 from .routers import dashboard as dashboard_router
 from .routers import benchmark as benchmark_router
+from .routers import attestations as attestations_router
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("mkpath.main")
@@ -78,6 +80,8 @@ app.include_router(pipeline_router.router)
 app.include_router(stability_router.router)
 app.include_router(dashboard_router.router)
 app.include_router(benchmark_router.router)
+app.include_router(attestations_router.router)
+
 
 
 @app.get("/")

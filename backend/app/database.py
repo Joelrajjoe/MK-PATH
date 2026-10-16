@@ -37,6 +37,9 @@ CORE_COLLECTIONS: List[str] = [
     "fib_vg_runs",
     "fib_vg_scenario_results",
     "fib_vg_audit_events",
+    "attestation_envelopes",
+    "lineage_events",
+    "lineage_checkpoints",
 ]
 
 # Indexes are created ONLY where justified by a concrete query pattern:
@@ -48,6 +51,9 @@ CORE_COLLECTIONS: List[str] = [
 # - fib_vg_runs: benchmark runs indexed by project and creation time.
 # - fib_vg_scenario_results: scenario outcomes indexed by run_id and scenario_id.
 # - fib_vg_audit_events: benchmark audit trails indexed by run_id and timestamp.
+# - attestation_envelopes: envelopes indexed by envelope_id, project_id, and created_at.
+# - lineage_events: event chain indexed by run_id and sequence_number.
+# - lineage_checkpoints: chain checkpoints indexed by chain_id and checkpoint_id.
 # All other collections are write-first with no established read pattern yet,
 # so no indexes are created (indexes cost write throughput and storage).
 JUSTIFIED_INDEXES: Dict[str, List[Any]] = {
@@ -59,7 +65,11 @@ JUSTIFIED_INDEXES: Dict[str, List[Any]] = {
     "fib_vg_runs": [("project_id", 1), ("created_at", -1)],
     "fib_vg_scenario_results": [("run_id", 1), ("scenario_id", 1)],
     "fib_vg_audit_events": [("run_id", 1), ("created_at", -1)],
+    "attestation_envelopes": [("envelope_id", 1), ("project_id", 1), ("created_at", -1)],
+    "lineage_events": [("run_id", 1), ("sequence_number", 1)],
+    "lineage_checkpoints": [("chain_id", 1), ("checkpoint_id", 1)],
 }
+
 
 
 import json
