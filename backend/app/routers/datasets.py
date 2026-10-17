@@ -447,7 +447,13 @@ async def delete_dataset(dataset_id: str) -> Dict[str, Any]:
     _require_db()
     doc = await _get_or_404(dataset_id)
 
-    # 1. Remove physical files
+    # 1. Unregister DuckDB view first so DuckDB releases open file handles on Windows
+    try:
+        registry.unregister(dataset_id)
+    except Exception as e:
+        logger.warning(f"Could not unregister DuckDB view for {dataset_id}: {e}")
+
+    # 2. Remove physical files
     for key in ("normalized_path", "storage_path"):
         p_str = doc.get(key)
         if p_str:
@@ -458,19 +464,13 @@ async def delete_dataset(dataset_id: str) -> Dict[str, Any]:
                 except Exception as e:
                     logger.warning(f"Failed to remove file {p}: {e}")
 
-    # 2. Remove profile report if exists
+    # 3. Remove profile report if exists
     report_p = _profile_report_path(dataset_id)
     if report_p.exists():
         try:
             report_p.unlink(missing_ok=True)
         except Exception:
             pass
-
-    # 3. Unregister DuckDB view
-    try:
-        registry.unregister(dataset_id)
-    except Exception as e:
-        logger.warning(f"Could not unregister DuckDB view for {dataset_id}: {e}")
 
     # 4. Remove from repository
     deleted = await repo.delete_dataset(dataset_id)
@@ -616,11 +616,14 @@ async def get_dataset_relationships(dataset_id: str) -> Dict[str, Any]:
     project_id = doc.get("project_id")
 
     sibling_datasets = []
-    if project_id:
-        try:
+    try:
+        if project_id:
             sibling_datasets = await repo.list_datasets(limit=50, project_id=project_id)
-        except Exception:
-            sibling_datasets = []
+        if not sibling_datasets and doc.get("upload_id"):
+            all_ds = await repo.list_datasets(limit=100)
+            sibling_datasets = [d for d in all_ds if d.get("upload_id") == doc.get("upload_id") or (d.get("parent_archive") and d.get("parent_archive") == doc.get("parent_archive"))]
+    except Exception:
+        sibling_datasets = []
 
     schema = doc.get("schema", [])
     col_names = [c["name"] if isinstance(c, dict) else str(c) for c in schema]
@@ -643,7 +646,7 @@ async def get_dataset_relationships(dataset_id: str) -> Dict[str, Any]:
     df = None
     try:
         registry.ensure_view(dataset_id, doc.get("normalized_path"))
-        conn = registry.get_conn()
+        conn = registry.get_cursor()
         v_name = registry.view_name(dataset_id)
         df = conn.execute(f'SELECT * FROM "{v_name}"').df()
     except Exception:
@@ -726,9 +729,14 @@ async def get_dataset_relationships(dataset_id: str) -> Dict[str, Any]:
         other_schema = other.get("schema", [])
         other_cols = [c["name"] if isinstance(c, dict) else str(c) for c in other_schema]
 
-        common_keys = set(col_names).intersection(set(other_cols))
-        for key in common_keys:
-            if any(term in key.lower() for term in ["id", "_id", "code", "key", "segment", "user", "order", "product"]):
+        col_map_this = {c.lower(): c for c in col_names}
+        col_map_other = {c.lower(): c for c in other_cols}
+        common_lowers = set(col_map_this.keys()).intersection(set(col_map_other.keys()))
+
+        for l_key in common_lowers:
+            this_key = col_map_this[l_key]
+            other_key = col_map_other[l_key]
+            if any(term in l_key for term in ["id", "_id", "code", "key", "segment", "user", "order", "product", "store", "channel", "geography"]):
                 other_table_node_id = f"table_{other_id}"
                 if not any(n["id"] == other_table_node_id for n in nodes):
                     nodes.append({
@@ -740,18 +748,43 @@ async def get_dataset_relationships(dataset_id: str) -> Dict[str, Any]:
                         "datasetId": other_id,
                     })
 
+                other_col_node_id = f"col_{other_id}_{other_key}"
+                if not any(n["id"] == other_col_node_id for n in nodes):
+                    nodes.append({
+                        "id": other_col_node_id,
+                        "label": other_key,
+                        "type": "column",
+                        "role": "Foreign Key / Reference",
+                        "dataType": "string",
+                        "isUnique": False,
+                        "nullCount": 0,
+                        "parentTable": other_table_node_id
+                    })
+                    relationships.append({
+                        "id": f"rel_{other_table_node_id}_{other_col_node_id}",
+                        "source": other_table_node_id,
+                        "target": other_col_node_id,
+                        "sourceLabel": other.get("name", "Other Table"),
+                        "targetLabel": other_key,
+                        "predicate": "HAS_COLUMN",
+                        "cardinality": "1:N",
+                        "confidence": 1.0,
+                        "kind": "structural",
+                        "description": f"Dataset '{other.get('name')}' owns {other_key}."
+                    })
+
                 relationships.append({
-                    "id": f"rel_fk_{dataset_id}_{other_id}_{key}",
-                    "source": f"col_{dataset_id}_{key}",
-                    "target": f"col_{other_id}_{key}",
-                    "sourceLabel": f"{doc.get('name', 'This Table')}.{key}",
-                    "targetLabel": f"{other.get('name', 'Other Table')}.{key}",
+                    "id": f"rel_fk_{dataset_id}_{other_id}_{l_key}",
+                    "source": f"col_{dataset_id}_{this_key}",
+                    "target": other_col_node_id,
+                    "sourceLabel": f"{doc.get('name', 'This Table')}.{this_key}",
+                    "targetLabel": f"{other.get('name', 'Other Table')}.{other_key}",
                     "predicate": "FOREIGN_KEY_MATCH",
                     "cardinality": "1:N",
-                    "confidence": 0.96,
+                    "confidence": 0.98,
                     "kind": "relational",
-                    "joinKey": key,
-                    "description": f"Foreign Key link between '{doc.get('name')}' and '{other.get('name')}' on `{key}`."
+                    "joinKey": this_key,
+                    "description": f"Foreign Key link between '{doc.get('name')}' and '{other.get('name')}' on `{this_key}` / `{other_key}`."
                 })
 
     return {

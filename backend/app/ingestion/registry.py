@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import duckdb
 
-_lock = threading.Lock()
+_lock = threading.RLock()
 _conn: Any = None
 
 
@@ -23,6 +23,11 @@ def get_conn() -> duckdb.DuckDBPyConnection:
         if _conn is None:
             _conn = duckdb.connect(database=":memory:")
         return _conn
+
+
+def get_cursor() -> duckdb.DuckDBPyConnection:
+    """Return an isolated cursor on the shared DuckDB connection for thread-safe querying."""
+    return get_conn().cursor()
 
 
 def view_name(dataset_id: str) -> str:
@@ -40,14 +45,15 @@ def register(dataset_id: str, parquet_path: str) -> str:
     if not dataset_id:
         raise ValueError("dataset_id must be provided and non-empty")
     clean_id = dataset_id[3:] if dataset_id.startswith("ds_") else dataset_id
-    conn = get_conn()
-    view = view_name(clean_id)
-    quoted = _quote_literal(parquet_path)
-    conn.execute(
-        f'CREATE OR REPLACE VIEW "{view}" AS '
-        f"SELECT * FROM read_parquet('{quoted}')"
-    )
-    return view
+    with _lock:
+        conn = get_conn()
+        view = view_name(clean_id)
+        quoted = _quote_literal(parquet_path)
+        conn.execute(
+            f'CREATE OR REPLACE VIEW "{view}" AS '
+            f"SELECT * FROM read_parquet('{quoted}')"
+        )
+        return view
 
 
 def ensure_view(dataset_id: str, parquet_path: Optional[str] = None) -> str:
@@ -55,13 +61,14 @@ def ensure_view(dataset_id: str, parquet_path: Optional[str] = None) -> str:
     if not dataset_id:
         raise ValueError("dataset_id must be provided and non-empty")
     clean_id = dataset_id[3:] if dataset_id.startswith("ds_") else dataset_id
-    conn = get_conn()
     view = view_name(clean_id)
-    try:
-        conn.execute(f'SELECT 1 FROM "{view}" LIMIT 1')
-        return view
-    except Exception:
-        pass
+    with _lock:
+        conn = get_conn()
+        try:
+            conn.execute(f'SELECT 1 FROM "{view}" LIMIT 1')
+            return view
+        except Exception:
+            pass
 
     path_to_use: Optional[str] = None
     if parquet_path and Path(parquet_path).exists():
@@ -107,6 +114,8 @@ def unregister(dataset_id: str) -> None:
         conn.execute(f'DROP VIEW IF EXISTS "{view_name(dataset_id)}"')
     except duckdb.Error:
         pass
+    import gc
+    gc.collect()
 
 
 def _jsonable(value: Any) -> Any:

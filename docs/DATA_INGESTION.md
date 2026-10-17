@@ -10,7 +10,7 @@ Path mapping: spec `E:\MK-PATH` = workspace `E:\MKPATH` (recorded Phase 1 decisi
 | Input | Handling |
 | --- | --- |
 | `.csv` | delimiter sniffing (`,` `;` `\t` `|`), UTF-8/UTF-8-BOM (cp1252/latin-1 fallback with warnings), header detection, malformed-row errors with line numbers |
-| `.xlsx` | openpyxl read-only metadata (workbook, sheet names, dimensions); only the selected sheet is loaded; `sheet_name` form field selects a sheet |
+| `.xlsx` | openpyxl fast streaming metadata (`read_only=True, data_only=True`); heuristic banner-header auto-detection (`_detect_excel_header_idx`) skipping title rows; multi-sheet ingestion parsing all non-empty sheets (e.g. `FACT Sales`, `FACT Sales Quota`) as independent tables (`<name>::<sheet>`); optional `sheet_name` override |
 | `.xls` | supported via `xlrd` (small pure-Python dependency); same sheet-selection semantics |
 | `.json` | array of objects, scalar arrays (→ `value` column), single object (→ 1 row), NDJSON; nested objects flattened with dot notation (warning); clear errors for unsupported shapes |
 | `.parquet` | PyArrow metadata read (lazy/columnar); original file used as normalized form — no conversion |
@@ -160,4 +160,12 @@ pure security units (sanitize_filename, zip limits, traversal entry rejection).
 
 - **DuckDB File Lock Management:** On Windows, DuckDB's in-memory view can hold an active read lock on the target `.parquet` file. When row append, update, or delete operations occur via `PATCH /api/datasets/{dataset_id}/rows`, the platform explicitly calls `registry.unregister(dataset_id)` before writing updated Parquet data back to disk (`df.to_parquet(...)`), followed immediately by `registry.register(dataset_id, norm_path)`. This guarantees zero `[WinError 32]` collisions and instant downstream analytical synchronization.
 - **ZIP System Metadata Filtering:** The ZIP archive discovery mechanism automatically rejects non-data macOS/Windows artifacts including AppleDouble files (`._*`), `__MACOSX`, `.DS_Store`, `Thumbs.db`, and `desktop.ini`.
+
+## 10. Star-Schema Support, Cross-Dataset Foreign Keys & Thread Safety
+
+- **Multi-Sheet Extraction:** Workbooks containing multiple analytical entities (e.g. `FACT Sales` transaction data and `FACT Sales Quota` forecasting data) are preserved as separate first-class datasets (`<Workbook>::<Sheet>`) with normalized Parquet representations and DuckDB registrations.
+- **Star-Schema Dimensional Detection:** Dimensional key columns (`channelKey`, `StoreKey`, `ProductKey`, `GeographyKey`) are automatically identified as analytical dimensions when string columns are absent, while distinct primary transaction identifiers (`SalesKey`) are preserved without polluting category cards.
+- **Cross-Dataset Relational Mapping:** The platform automatically traces foreign-key links (`channelKey` <-> `ChannelKey`, `StoreKey` <-> `StoreKey`, etc.) across sibling datasets sharing a project or parent upload archive, exposing an interactive relational graph (`GET /api/datasets/{id}/relationships`).
+- **DuckDB Re-entrant Concurrency:** Shared in-memory DuckDB queries utilize `threading.RLock()` and isolated cursors (`get_cursor()`) to ensure concurrent analytical queries, dynamic filter evaluations, and reconciliation audits never deadlock or corrupt open result sets.
+
 

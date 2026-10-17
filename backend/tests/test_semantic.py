@@ -52,10 +52,73 @@ def _ingest_and_profile(client, upload_fn, name, content):
 
 
 def _mongo():
-    from pymongo import MongoClient
+    from app.database import db_manager
+    if db_manager._using_fallback:
+        class SyncFallbackWrapper:
+            def __init__(self, coll_name):
+                self._name = coll_name
+                self._path = settings.DATA_DIR / "metadata" / f"{coll_name}.json"
+            def find_one(self, query, projection=None):
+                if not self._path.exists():
+                    return None
+                try:
+                    with open(self._path, "r", encoding="utf-8") as f:
+                        docs = json.load(f)
+                    for d in docs:
+                        match = True
+                        for k, v in query.items():
+                            if d.get(k) != v:
+                                match = False
+                                break
+                        if match:
+                            res = dict(d)
+                            if projection and projection.get("_id") == 0:
+                                res.pop("_id", None)
+                            return res
+                except Exception:
+                    pass
+                return None
 
-    cli = MongoClient(settings.MONGODB_URI, serverSelectionTimeoutMS=5000)
-    return cli[settings.MONGODB_DATABASE]
+        class SyncDBWrapper:
+            def __getattr__(self, name):
+                return SyncFallbackWrapper(name)
+        return SyncDBWrapper()
+
+    try:
+        from pymongo import MongoClient
+        cli = MongoClient(settings.MONGODB_URI, serverSelectionTimeoutMS=2000)
+        cli.admin.command("ping")
+        return cli[settings.MONGODB_DATABASE]
+    except Exception:
+        class SyncFallbackWrapper:
+            def __init__(self, coll_name):
+                self._name = coll_name
+                self._path = settings.DATA_DIR / "metadata" / f"{coll_name}.json"
+            def find_one(self, query, projection=None):
+                if not self._path.exists():
+                    return None
+                try:
+                    with open(self._path, "r", encoding="utf-8") as f:
+                        docs = json.load(f)
+                    for d in docs:
+                        match = True
+                        for k, v in query.items():
+                            if d.get(k) != v:
+                                match = False
+                                break
+                        if match:
+                            res = dict(d)
+                            if projection and projection.get("_id") == 0:
+                                res.pop("_id", None)
+                            return res
+                except Exception:
+                    pass
+                return None
+
+        class SyncDBWrapper:
+            def __getattr__(self, name):
+                return SyncFallbackWrapper(name)
+        return SyncDBWrapper()
 
 
 @pytest.fixture(autouse=True)

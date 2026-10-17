@@ -76,7 +76,10 @@ def _build_date_parse_expr(date_col: str) -> str:
         f"TRY_STRPTIME({tsc}, '%d-%m-%Y'), "
         f"TRY_STRPTIME({tsc}, '%Y/%m/%d'), "
         f"TRY_CAST({tsc} AS TIMESTAMP), "
-        f"TRY_CAST({tsc} AS DATE)"
+        f"TRY_CAST({tsc} AS DATE), "
+        f"CASE WHEN TRY_CAST({tsc} AS INTEGER) BETWEEN 20000 AND 60000 "
+        f"     THEN DATE '1899-12-30' + to_days(TRY_CAST({tsc} AS INTEGER)) "
+        f"     ELSE NULL END"
         f")"
     )
 
@@ -90,11 +93,10 @@ def _is_identifier_col(c: str) -> bool:
         return True
     if cl.endswith("_id") or cl.endswith("_uuid") or cl.endswith("_guid"):
         return True
-    if cl.endswith("_no") or cl.endswith("_num") or cl.endswith("_code") or cl.endswith("_key"):
+    if cl.endswith("_no") or cl.endswith("_num") or cl.endswith("_code"):
         return True
-    if any(cl.endswith(sfx) for sfx in ["id", "no", "num", "code", "key"]) and not any(
-        k in cl for k in ["road", "type", "method", "status", "mode", "country", "period"]
-    ):
+    # Note: don't blanket reject columns ending in 'key' if they are business dimensions (channelKey, storeKey)
+    if cl in ("saleskey", "orderkey", "linekey", "rowkey", "factkey"):
         return True
     return False
 
@@ -106,9 +108,9 @@ def _detect_schema_roles(
     """
     Introspect DuckDB schema to identify:
     - Date / Temporal column
-    - Primary Categorical column (e.g. team, road_type, department, segment, category)
-    - Secondary Categorical column (e.g. region, location, city, state, country)
-    - Primary Numeric metric column (e.g. sales, quantity, profit, speed_limit, volume)
+    - Primary Categorical column (e.g. channel, team, department, category, segment)
+    - Secondary Categorical column (e.g. store, region, location, city, state, country)
+    - Primary Numeric metric column (e.g. sales, amount, quantity, profit, speed_limit, volume)
     - Target event column (e.g. accident_occurred, status, is_success)
     """
     desc = conn.execute(f'DESCRIBE "{table_name}"').fetchall()
@@ -116,14 +118,23 @@ def _detect_schema_roles(
     types = {d[0]: str(d[1]).lower() for d in desc}
 
     date_col = None
-    # 1. Date column search
+    # 1. Date column search: prefer true date/timestamp columns over integer keys
     for c in cols:
         cl = c.lower()
-        if any(k in cl for k in ["order_date", "incident_date", "invoicedate", "created_at", "date", "timestamp", "time"]):
+        if cl in ("date", "order_date", "incident_date", "invoicedate", "created_at", "transaction_date"):
+            date_col = c
+            break
+        if any(k in types[c] for k in ["date", "timestamp"]) and not cl.endswith("key"):
             date_col = c
             break
 
-    # If no obvious name, check for date/timestamp data types
+    if not date_col:
+        for c in cols:
+            cl = c.lower()
+            if any(k in cl for k in ["order_date", "incident_date", "invoicedate", "created_at", "date", "timestamp", "time"]):
+                date_col = c
+                break
+
     if not date_col:
         for c, t in types.items():
             if any(k in t for k in ["date", "timestamp", "time"]):
@@ -138,31 +149,66 @@ def _detect_schema_roles(
             target_col = c
             break
 
-    # 3. Primary category (team / road_type / department / category / segment)
-    # Exclude IDs, keys, hashes, codes
+    # 3. Primary numeric column
+    num_candidates = [
+        c for c in cols
+        if any(k in types[c] for k in ["int", "float", "double", "decimal", "numeric", "bigint"])
+        and not _is_identifier_col(c)
+        and not any(k in c.lower() for k in ["hour", "day", "month", "year", "index", "lat", "lon", "postal", "zip"])
+    ]
+    primary_num = None
+    num_priority = [
+        "salesamount", "revenue", "sales_amount", "total_sales", "amount",
+        "forecast amount", "budget amount", "forecast_amount", "budget_amount",
+        "totalcost", "profit", "margin", "speed_limit", "volume",
+        "salesquantity", "quantity", "forecast quantity", "budget quantity"
+    ]
+    for p in num_priority:
+        for c in num_candidates:
+            cl = c.lower().replace("_", " ")
+            if cl == p or p in cl:
+                primary_num = c
+                break
+        if primary_num:
+            break
+    if not primary_num and num_candidates:
+        primary_num = num_candidates[0]
+
+    # 4. Primary category (team / channel / road_type / department / category / segment)
     cat_candidates = [
         c for c in cols
-        if c not in (date_col, target_col)
+        if c not in (date_col, target_col, primary_num)
         and not _is_identifier_col(c)
         and any(k in types[c] for k in ["varchar", "string", "text", "char"])
     ]
     if not cat_candidates:
         cat_candidates = [
             c for c in cols
-            if c not in (date_col, target_col)
+            if c not in (date_col, target_col, primary_num)
             and any(k in types[c] for k in ["varchar", "string", "text", "char"])
         ]
+    if not cat_candidates:
+        # Check for dimensional key columns in star schemas (e.g. channelKey, storeKey, productKey)
+        dim_key_cols = [
+            c for c in cols
+            if c not in (date_col, target_col, primary_num)
+            and any(k in c.lower() for k in ["channel", "store", "product", "category", "segment", "department", "geography", "region", "promo"])
+        ]
+        if dim_key_cols:
+            cat_candidates = dim_key_cols
+        else:
+            cat_candidates = [c for c in cols if c not in (date_col, target_col, primary_num)]
 
     primary_cat = None
     for c in cat_candidates:
         cl = c.lower()
-        if any(k in cl for k in ["road_type", "team", "department", "category", "segment", "division"]):
+        if any(k in cl for k in ["channel", "road_type", "team", "department", "category", "segment", "division"]):
             primary_cat = c
             break
     if not primary_cat:
         for c in cat_candidates:
             cl = c.lower()
-            if any(k in cl for k in ["description", "product", "item", "service", "type", "class", "group"]):
+            if any(k in cl for k in ["description", "product", "item", "service", "type", "class", "group", "store"]):
                 primary_cat = c
                 break
     if not primary_cat and cat_candidates:
@@ -170,63 +216,27 @@ def _detect_schema_roles(
     elif not primary_cat and cols:
         non_date = [c for c in cols if c != date_col]
         primary_cat = non_date[0] if non_date else cols[0]
-    elif not primary_cat:
-        primary_cat = "category"
 
-    # 4. Secondary dimension (region / state / city / location / country / weather)
-    # Prioritize columns with rich cardinality (> 1)
-    secondary_candidates = []
-    for c in cat_candidates:
-        if c == primary_cat:
-            continue
-        cl = c.lower()
-        if any(k in cl for k in ["region", "state", "city", "location", "weather", "branch", "area", "zone", "territory", "market", "site", "country"]):
-            secondary_candidates.append(c)
+    if primary_cat not in cols:
+        primary_cat = cols[0] if cols else "category"
+
+    # 5. Secondary dimension (store / region / state / city / location / country / weather)
+    secondary_candidates = [c for c in cat_candidates if c != primary_cat]
+    if not secondary_candidates:
+        secondary_candidates = [c for c in cols if c not in (date_col, target_col, primary_num, primary_cat)]
 
     secondary_cat = None
     if secondary_candidates:
-        # Check cardinality to avoid picking single-value columns like Country = 'United States'
-        scored_candidates = []
         for c in secondary_candidates:
-            try:
-                card_res = conn.execute(f'SELECT count(DISTINCT {_sanitize_col(c)}) FROM "{table_name}" WHERE {_sanitize_col(c)} IS NOT NULL').fetchone()
-                card = card_res[0] if card_res else 0
-            except Exception:
-                card = 0
-            # Higher score for moderate cardinality (between 2 and 50)
-            score = 10 if 2 <= card <= 50 else (5 if card > 50 else 0)
-            # Preference bonus for region/state/city
             cl = c.lower()
-            if "region" in cl:
-                score += 5
-            elif "state" in cl:
-                score += 4
-            elif "city" in cl:
-                score += 3
-            scored_candidates.append((score, card, c))
-        scored_candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
-        secondary_cat = scored_candidates[0][2]
+            if any(k in cl for k in ["store", "region", "state", "city", "location", "geography", "weather", "branch", "area", "zone"]):
+                secondary_cat = c
+                break
+        if not secondary_cat:
+            secondary_cat = secondary_candidates[0]
 
-    if not secondary_cat:
-        remaining = [c for c in cat_candidates if c != primary_cat]
-        secondary_cat = remaining[0] if remaining else primary_cat
-
-    # 5. Primary numeric column
-    num_candidates = [
-        c for c in cols
-        if any(k in types[c] for k in ["int", "float", "double", "decimal", "numeric", "bigint"])
-        and not _is_identifier_col(c)
-        and not any(k in c.lower() for k in ["hour", "day", "month", "year", "index", "lat", "lon", "postal", "zip"])
-    ]
-    # Priority for business value metrics: sales, revenue, profit, amount, speed_limit
-    primary_num = None
-    for c in num_candidates:
-        cl = c.lower()
-        if any(k in cl for k in ["sales", "revenue", "amount", "profit", "speed_limit", "volume", "total"]):
-            primary_num = c
-            break
-    if not primary_num and num_candidates:
-        primary_num = num_candidates[0]
+    if not secondary_cat or secondary_cat not in cols:
+        secondary_cat = primary_cat
 
     return {
         "date_col": date_col,
@@ -237,6 +247,7 @@ def _detect_schema_roles(
         "types": types,
         "all_cols": cols,
     }
+
 
 
 def _resolve_column_for_value(
@@ -349,11 +360,11 @@ def _build_filter_sql(
             clauses.append(f'month({parse_expr}) = ?')
             params.append(int(filter_ctx.month))
 
-    if primary_cat and filter_ctx.team and filter_ctx.team.lower() not in ("all", "all teams / categories", "all categories"):
+    if primary_cat and primary_cat in all_cols and filter_ctx.team and filter_ctx.team.lower() not in ("all", "all teams / categories", "all categories"):
         clauses.append(f"COALESCE(NULLIF(CAST({_sanitize_col(primary_cat)} AS VARCHAR), ''), 'Unknown') = ?")
         params.append(filter_ctx.team)
 
-    if secondary_cat and filter_ctx.location and filter_ctx.location.lower() not in ("all", "all locations"):
+    if secondary_cat and secondary_cat in all_cols and filter_ctx.location and filter_ctx.location.lower() not in ("all", "all locations"):
         clauses.append(f"COALESCE(NULLIF(CAST({_sanitize_col(secondary_cat)} AS VARCHAR), ''), 'General') = ?")
         params.append(filter_ctx.location)
 
@@ -381,7 +392,7 @@ def compute_dashboard_analytics(
     """
     start_time = time.perf_counter()
     v_name = registry.ensure_view(dataset_id)
-    conn = registry.get_conn()
+    conn = registry.get_cursor()
 
     # 1. Inspect Schema Roles
     roles = _detect_schema_roles(conn, v_name)
@@ -597,10 +608,11 @@ def compute_dashboard_analytics(
             ORDER BY 1
         """, filter_params).df()
 
-        if len(window_df) >= 2:
+        val_col = "val" if (not window_df.empty and "val" in window_df.columns) else (window_df.columns[-1] if not window_df.empty else "val")
+        if len(window_df) >= 2 and val_col in window_df.columns:
             mid = len(window_df) // 2
-            h1 = _safe_float(window_df.iloc[:mid]["val"].sum())
-            h2 = _safe_float(window_df.iloc[mid:]["val"].sum())
+            h1 = _safe_float(window_df.iloc[:mid][val_col].sum())
+            h2 = _safe_float(window_df.iloc[mid:][val_col].sum())
             card1.previous_value = h1
             if h1 > 0:
                 change = ((h2 - h1) / h1) * 100.0
@@ -617,13 +629,14 @@ def compute_dashboard_analytics(
             card1.is_positive = True
 
         card1.status_note = "Chronological window sequence computed across active records."
-        for idx, row in window_df.iterrows():
-            v_val = _safe_float(row["val"])
-            card1.sparkline_points.append(SparklinePoint(
-                label=f"P{idx+1}",
-                value=v_val,
-                formatted=f"{v_val:.0f}"
-            ))
+        if not window_df.empty and val_col in window_df.columns:
+            for idx, row in window_df.iterrows():
+                v_val = _safe_float(row[val_col])
+                card1.sparkline_points.append(SparklinePoint(
+                    label=f"P{idx+1}",
+                    value=v_val,
+                    formatted=f"{v_val:.0f}"
+                ))
 
     # -------------------------------------------------------------------------
     # CARD 2: Year-over-Year / Trajectory Change
@@ -1080,7 +1093,7 @@ def get_filter_dimensions(
 ) -> FilterDimensions:
     """Extract distinct dimension values for dynamic cascading filters with actual record counts."""
     v_name = registry.ensure_view(dataset_id)
-    conn = registry.get_conn()
+    conn = registry.get_cursor()
     roles = _detect_schema_roles(conn, v_name)
 
     date_col = roles["date_col"]
@@ -1129,47 +1142,51 @@ def get_filter_dimensions(
 
     date_where_sql = ("WHERE " + " AND ".join(date_where_clauses)) if date_where_clauses else ""
 
-    teams = [
-        str(r[0]) for r in conn.execute(
-            f'SELECT DISTINCT COALESCE(NULLIF(CAST({_sanitize_col(primary_cat)} AS VARCHAR), \'\'), \'Unknown\') '
-            f'FROM "{v_name}" {date_where_sql} {"AND" if date_where_sql else "WHERE"} {_sanitize_col(primary_cat)} IS NOT NULL LIMIT 30',
-            date_where_params
-        ).fetchall()
-        if r[0] is not None
-    ]
-    if not teams:
+    teams: List[str] = []
+    if primary_cat and primary_cat in all_cols:
         teams = [
             str(r[0]) for r in conn.execute(
                 f'SELECT DISTINCT COALESCE(NULLIF(CAST({_sanitize_col(primary_cat)} AS VARCHAR), \'\'), \'Unknown\') '
-                f'FROM "{v_name}" WHERE {_sanitize_col(primary_cat)} IS NOT NULL LIMIT 30'
+                f'FROM "{v_name}" {date_where_sql} {"AND" if date_where_sql else "WHERE"} {_sanitize_col(primary_cat)} IS NOT NULL LIMIT 30',
+                date_where_params
             ).fetchall()
-            if r[0] is not None
+            if r and len(r) > 0 and r[0] is not None
         ]
+        if not teams:
+            teams = [
+                str(r[0]) for r in conn.execute(
+                    f'SELECT DISTINCT COALESCE(NULLIF(CAST({_sanitize_col(primary_cat)} AS VARCHAR), \'\'), \'Unknown\') '
+                    f'FROM "{v_name}" WHERE {_sanitize_col(primary_cat)} IS NOT NULL LIMIT 30'
+                ).fetchall()
+                if r and len(r) > 0 and r[0] is not None
+            ]
 
     # Cascading locations: if team is selected, get locations for that team!
     loc_where_clauses = list(date_where_clauses)
     loc_where_params = list(date_where_params)
-    if filter_ctx and filter_ctx.team and filter_ctx.team.lower() not in ("all", "all teams / categories", "all categories"):
+    if filter_ctx and filter_ctx.team and filter_ctx.team.lower() not in ("all", "all teams / categories", "all categories") and primary_cat in all_cols:
         loc_where_clauses.append(f"COALESCE(NULLIF(CAST({_sanitize_col(primary_cat)} AS VARCHAR), ''), 'Unknown') = ?")
         loc_where_params.append(filter_ctx.team)
 
     loc_where_sql = ("WHERE " + " AND ".join(loc_where_clauses)) if loc_where_clauses else ""
-    locations = [
-        str(r[0]) for r in conn.execute(
-            f'SELECT DISTINCT COALESCE(NULLIF(CAST({_sanitize_col(secondary_cat)} AS VARCHAR), \'\'), \'General\') '
-            f'FROM "{v_name}" {loc_where_sql} {"AND" if loc_where_sql else "WHERE"} {_sanitize_col(secondary_cat)} IS NOT NULL LIMIT 30',
-            loc_where_params
-        ).fetchall()
-        if r[0] is not None
-    ]
-    if not locations:
+    locations: List[str] = []
+    if secondary_cat and secondary_cat in all_cols:
         locations = [
             str(r[0]) for r in conn.execute(
                 f'SELECT DISTINCT COALESCE(NULLIF(CAST({_sanitize_col(secondary_cat)} AS VARCHAR), \'\'), \'General\') '
-                f'FROM "{v_name}" WHERE {_sanitize_col(secondary_cat)} IS NOT NULL LIMIT 30'
+                f'FROM "{v_name}" {loc_where_sql} {"AND" if loc_where_sql else "WHERE"} {_sanitize_col(secondary_cat)} IS NOT NULL LIMIT 30',
+                loc_where_params
             ).fetchall()
-            if r[0] is not None
+            if r and len(r) > 0 and r[0] is not None
         ]
+        if not locations:
+            locations = [
+                str(r[0]) for r in conn.execute(
+                    f'SELECT DISTINCT COALESCE(NULLIF(CAST({_sanitize_col(secondary_cat)} AS VARCHAR), \'\'), \'General\') '
+                    f'FROM "{v_name}" WHERE {_sanitize_col(secondary_cat)} IS NOT NULL LIMIT 30'
+                ).fetchall()
+                if r and len(r) > 0 and r[0] is not None
+            ]
 
     years: List[int] = []
     quarters: List[str] = ["Q1", "Q2", "Q3", "Q4"]
@@ -1190,17 +1207,17 @@ def get_filter_dimensions(
                 f'SELECT DISTINCT year({date_parse_expr}) '
                 f'FROM "{v_name}" WHERE {date_parse_expr} IS NOT NULL ORDER BY 1'
             ).fetchall()
-            years = [int(r[0]) for r in yr_res if r[0] is not None]
+            years = [int(r[0]) for r in yr_res if r and len(r) > 0 and r[0] is not None]
         except Exception as exc:
             logger.warning("Could not extract filter years: %s", exc)
 
     # Compute row counts under filter_ctx
     tot_row = conn.execute(f'SELECT count(*) FROM "{v_name}"').fetchone()
-    total_records = int(tot_row[0]) if tot_row else 0
+    total_records = int(tot_row[0]) if (tot_row and len(tot_row) > 0) else 0
 
     filter_sql, filter_params = _build_filter_sql(filter_ctx, roles, conn, v_name)
     fil_row = conn.execute(f'SELECT count(*) FROM "{v_name}" WHERE {filter_sql}', filter_params).fetchone()
-    filtered_records = int(fil_row[0]) if fil_row else 0
+    filtered_records = int(fil_row[0]) if (fil_row and len(fil_row) > 0) else 0
 
     return FilterDimensions(
         years=years,
@@ -1221,7 +1238,7 @@ def get_filter_dimensions(
 def get_drilldown_records(req: DrilldownRequest) -> DrilldownResponse:
     """Retrieve verified underlying records for drill-down context."""
     v_name = registry.ensure_view(req.dataset_id)
-    conn = registry.get_conn()
+    conn = registry.get_cursor()
     roles = _detect_schema_roles(conn, v_name)
 
     filter_sql, filter_params = _build_filter_sql(req.filter_context, roles, conn, v_name)
@@ -1259,7 +1276,6 @@ def get_drilldown_records(req: DrilldownRequest) -> DrilldownResponse:
     ).df()
 
     columns = list(df.columns)
-    # Convert numpy types and timestamps to JSON serializable objects
     rows = json.loads(df.fillna("").to_json(orient="records", date_format="iso"))
 
     return DrilldownResponse(
@@ -1271,3 +1287,4 @@ def get_drilldown_records(req: DrilldownRequest) -> DrilldownResponse:
         columns=columns,
         rows=rows,
     )
+

@@ -267,82 +267,158 @@ def _excel_sheet_meta(path: Path) -> Dict[str, Any]:
         wb.close()
 
 
-def parse_excel(path: Path, logical_name: str, sheet_name: Optional[str]) -> TableInfo:
-    warnings: List[str] = []
+def _detect_excel_header_idx(path: Path, sheet_name: str, ext: str) -> int:
+    """Detect 0-based header row index by scanning initial rows for title/banner/blank lines."""
+    rows: List[List[Any]] = []
+    if ext == ".xlsx":
+        try:
+            from openpyxl import load_workbook
+            wb = load_workbook(path, read_only=True, data_only=True)
+            try:
+                ws = wb[sheet_name]
+                rows = list(ws.iter_rows(max_row=15, values_only=True))
+            finally:
+                wb.close()
+        except Exception:
+            return 0
+    else:
+        try:
+            import xlrd
+            book = xlrd.open_workbook(path, on_demand=True)
+            sheet = book.sheet_by_name(sheet_name) if sheet_name in book.sheet_names() else book.sheet_by_index(0)
+            rows = [sheet.row_values(r) for r in range(min(15, sheet.nrows))]
+            book.release_resources()
+        except Exception:
+            return 0
+
+    if not rows:
+        return 0
+
+    best_idx = 0
+    best_score = -1.0
+
+    for idx, r in enumerate(rows):
+        non_empty = [c for c in r if c is not None and str(c).strip() != ""]
+        if not non_empty:
+            continue
+        str_count = 0
+        for c in non_empty:
+            s = str(c).strip()
+            try:
+                float(s)
+            except ValueError:
+                str_count += 1
+
+        total_cells = len(non_empty)
+        str_ratio = str_count / total_cells if total_cells > 0 else 0.0
+
+        score = total_cells * (2.0 if str_ratio > 0.6 else 0.5)
+        if total_cells <= 1:
+            score = 0.1  # likely a title banner cell
+
+        if score > best_score:
+            best_score = score
+            best_idx = idx
+
+    return best_idx
+
+
+def parse_excel(path: Path, logical_name: str, sheet_name: Optional[str]) -> List[TableInfo]:
     ext = path.suffix.lower()
+    tables: List[TableInfo] = []
 
     if ext == ".xlsx":
         meta = _excel_sheet_meta(path)
-        sheets = [s["name"] for s in meta["sheets"]]
-        if sheet_name:
-            if sheet_name not in sheets:
-                raise IngestionError(
-                    "SHEET_NOT_FOUND",
-                    f"Sheet {sheet_name!r} not found. Available sheets: {sheets}",
-                )
-            chosen = sheet_name
-        else:
-            chosen = sheets[0]
-            if len(sheets) > 1:
-                warnings.append(
-                    f"Workbook has {len(sheets)} sheets {sheets}; ingested first "
-                    f"sheet {chosen!r}. Re-upload with sheet_name to select another."
-                )
-        try:
-            df = pd.read_excel(path, sheet_name=chosen, engine="openpyxl")
-        except Exception as exc:  # malformed workbook / broken XML
-            raise IngestionError(
-                "MALFORMED_EXCEL",
-                f"Could not read workbook sheet {chosen!r}: {type(exc).__name__}: {exc}",
-            )
-        meta_sheets = meta["sheets"]
-    else:  # .xls via xlrd (read-only, small dependency)
-        chosen = None
-        try:
-            import xlrd
+        all_sheets = [s["name"] for s in meta["sheets"]]
+        engine = "openpyxl"
+    else:
+        import xlrd
+        book = xlrd.open_workbook(path, on_demand=True)
+        all_sheets = book.sheet_names()
+        book.release_resources()
+        engine = "xlrd"
 
-            book = xlrd.open_workbook(path, on_demand=True)
-            names = book.sheet_names()
-            if sheet_name:
-                if sheet_name not in names:
-                    raise IngestionError(
-                        "SHEET_NOT_FOUND",
-                        f"Sheet {sheet_name!r} not found. Available sheets: {names}",
-                    )
-                chosen = sheet_name
+    if sheet_name:
+        if sheet_name not in all_sheets:
+            raise IngestionError(
+                "SHEET_NOT_FOUND",
+                f"Sheet {sheet_name!r} not found. Available sheets: {all_sheets}",
+            )
+        sheets_to_parse = [sheet_name]
+    else:
+        sheets_to_parse = all_sheets
+
+    multi_sheet = len(all_sheets) > 1
+
+    for s_name in sheets_to_parse:
+        warnings: List[str] = []
+        if multi_sheet:
+            warnings.append(
+                f"Workbook has {len(all_sheets)} sheets {all_sheets}; ingested sheet {s_name!r}."
+            )
+        h_idx = _detect_excel_header_idx(path, s_name, ext)
+        if h_idx > 0:
+            warnings.append(f"Auto-detected header at row {h_idx + 1} (skipped title/banner rows).")
+
+        try:
+            if ext == ".xlsx":
+                from openpyxl import load_workbook
+                wb = load_workbook(path, read_only=True, data_only=True)
+                try:
+                    ws = wb[s_name]
+                    rows_iter = ws.iter_rows(values_only=True)
+                    for _ in range(h_idx):
+                        next(rows_iter, None)
+                    raw_headers = next(rows_iter, None)
+                    if raw_headers is None:
+                        df = pd.DataFrame()
+                    else:
+                        cols = [str(c).strip() if c is not None else "" for c in raw_headers]
+                        data = list(rows_iter)
+                        df = pd.DataFrame(data, columns=cols)
+                finally:
+                    wb.close()
             else:
-                chosen = names[0] if names else None
-                if len(names) > 1:
-                    warnings.append(
-                        f"Workbook has {len(names)} sheets {names}; ingested first "
-                        f"sheet {chosen!r}. Re-upload with sheet_name to select another."
-                    )
-            book.release_resources()
-        except IngestionError:
-            raise
+                df = pd.read_excel(path, sheet_name=s_name, header=h_idx, engine=engine)
         except Exception as exc:
-            raise IngestionError(
-                "MALFORMED_EXCEL",
-                f"Could not read legacy .xls workbook: {type(exc).__name__}: {exc}",
-            )
-        try:
-            df = pd.read_excel(path, sheet_name=chosen, engine="xlrd")
-        except Exception as exc:
-            raise IngestionError(
-                "MALFORMED_EXCEL",
-                f"Could not read sheet {chosen!r}: {type(exc).__name__}: {exc}",
-            )
-        meta_sheets = [{"name": n, "max_rows": None, "max_columns": None} for n in names]
+            if sheet_name:
+                raise IngestionError(
+                    "MALFORMED_EXCEL",
+                    f"Could not read workbook sheet {s_name!r}: {type(exc).__name__}: {exc}",
+                )
+            continue
 
-    if df.empty and df.shape[1] == 0:
-        raise IngestionError("MALFORMED_EXCEL", "Selected sheet is empty.")
+        if df.empty and df.shape[1] == 0:
+            if sheet_name:
+                raise IngestionError("MALFORMED_EXCEL", "Selected sheet is empty.")
+            continue
 
-    table_name = f"{logical_name}::{chosen}" if chosen else logical_name
-    dest = settings.DATA_DIR / "staging" / f"{uuid.uuid4().hex}.parquet"
-    table = _df_to_table(df, dest, table_name)
-    table.warnings.extend(warnings)
-    table_warnings = table.warnings
-    return table
+        # Clean column names
+        cleaned_cols = []
+        for i, c in enumerate(df.columns):
+            c_str = str(c).strip() if c is not None else ""
+            if not c_str or c_str.lower().startswith("unnamed:"):
+                cleaned_cols.append(f"col_{i}")
+            else:
+                cleaned_cols.append(c_str)
+        df.columns = cleaned_cols
+
+        # Drop entirely empty rows
+        df = df.dropna(how="all").reset_index(drop=True)
+        if df.empty:
+            continue
+
+        table_name = f"{logical_name}::{s_name}" if multi_sheet else logical_name
+        dest = settings.DATA_DIR / "staging" / f"{uuid.uuid4().hex}.parquet"
+        table = _df_to_table(df, dest, table_name)
+        table.warnings.extend(warnings)
+        tables.append(table)
+
+    if not tables:
+        raise IngestionError("MALFORMED_EXCEL", "Workbook contains no usable data sheets.")
+
+    return tables
+
 
 
 # ---------------------------------------------------------------------------
@@ -714,7 +790,7 @@ def parse_file(
     if ext in (".csv", ".tsv", ".txt"):
         return [parse_csv(path, logical_name)]
     if ext in (".xlsx", ".xls"):
-        return [parse_excel(path, logical_name, sheet_name)]
+        return parse_excel(path, logical_name, sheet_name)
     if ext == ".json":
         return [parse_json(path, logical_name)]
     if ext == ".parquet":
