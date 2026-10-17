@@ -96,14 +96,15 @@ async def root() -> Dict[str, Any]:
 
 @app.get("/api/health/database")
 async def health_database(response: Response) -> Dict[str, Any]:
-    """MongoDB Atlas health probe.
+    """MongoDB Atlas / Local Fallback health probe.
 
-    healthy   -> 200 {"status": "healthy", "database": "mk_path"}
-    degraded  -> 503 {"status": "unhealthy", "database": "mk_path", "reason": "<exception class>"}
+    healthy                  -> 200 {"status": "healthy", "database": "mk_path"}
+    degraded_local_fallback  -> 200 {"status": "degraded_local_fallback", "database": "local_fallback", "mode": "local_json_fallback"}
+    unhealthy                -> 503 {"status": "unhealthy", "reason": "<exception class>"}
 
     Never exposes credentials, URIs, or usernames.
     """
     payload = await db_manager.health()
-    if payload["status"] != "healthy":
+    if payload["status"] not in ("healthy", "degraded_local_fallback"):
         response.status_code = 503
     return payload

@@ -556,10 +556,13 @@ class DatabaseManager:
     def last_error(self) -> Optional[str]:
         return self._last_error
 
-    async def connect(self) -> bool:
+    async def connect(self, force: bool = False) -> bool:
         """Attempt to establish connectivity to MongoDB Atlas.
         If Atlas fails/times out, switch transparently to local file fallback.
         """
+        if self._connected and not force:
+            return True
+
         if not settings.mongo_configured:
             self._connected = True
             self._using_fallback = True
@@ -606,6 +609,7 @@ class DatabaseManager:
             except Exception:
                 pass
             self._client = None
+        self._connected = False
         self._db = self._fallback_db
         self._using_fallback = True
 
