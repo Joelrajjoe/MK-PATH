@@ -363,6 +363,15 @@ The platform provides end-to-end support for enterprise star schemas, demonstrat
 
 ## 16. Deployment Instructions
 
+### Railway, Render & Cloud PaaS Deployment
+MK-Path includes automated containerization and process definitions for Railway, Render, Fly.io, and Heroku:
+- **Root Entrypoint (`main.py`):** Automatically initializes `backend` into `sys.path` and serves `app.main:app` on dynamic PaaS ports (`$PORT`).
+- **Railway Configuration (`railway.json`):** Pre-configures the Nixpacks builder and defines the start command:
+  ```json
+  "startCommand": "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --app-dir backend"
+  ```
+- **Nixpacks (`nixpacks.toml`) & Procfile:** Configures Python 3.10 runtime environment and auto-installs `backend/requirements.txt`.
+
 ### Production Deployment Strategy
 1. **Process Management:** Production execution running Uvicorn with multiple workers or process manager natively on host (`uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4`). Zero Docker dependencies required.
 2. **Reverse Proxy:** Nginx configured with SSL termination (Let's Encrypt), HTTP/2, and gzip compression.
@@ -372,7 +381,19 @@ The platform provides end-to-end support for enterprise star schemas, demonstrat
 
 ---
 
-## 17. Security Considerations
+## 17. Progressive Web App (PWA) & Mobile-First Architecture
+
+MK-Path provides a modern Progressive Web App (PWA) designed for desktop, tablet, and mobile browsers:
+- **Web App Manifest (`manifest.json`):** Full standalone application manifest supporting home-screen installation on Android, iOS, and Chromium desktops.
+- **Service Worker (`sw.js`):** Offline application shell caching with stale-while-revalidate for static assets, network-first strategy for API routes with offline JSON fallbacks, and instantaneous activation via `skipWaiting`.
+- **Install Manager (`frontend/src/pwa.ts`):** Captures `beforeinstallprompt` and renders native 1-tap "Install App" triggers in both desktop topbar and mobile drawers.
+- **Mobile Thumb Navigation:** Dedicated thumb-accessible bottom navigation bar on mobile viewports (`< md`) providing fast navigation across Overview, Projects, BI Dashboard, Data, and Drawer Menu.
+- **Touch-Friendly Workspaces:** Horizontally scrollable workspace tabs with zero wrapping clutter, safe-area-inset padding for iPhone notches, and touch-optimized tap targets.
+- **Offline Resilience:** Visual network status detection with graceful offline indicators when disconnected from backend services.
+
+---
+
+## 18. Security Considerations
 
 - **No Hardcoded Secrets:** Environment secrets are strictly loaded via `.env` and excluded via `.gitignore`.
 - **Zip-Bomb & Traversal Defense:** Uploaded archives are inspected in-memory with strict ratio bounds and single-depth extraction.
@@ -382,7 +403,7 @@ The platform provides end-to-end support for enterprise star schemas, demonstrat
 
 ---
 
-## 18. Known Limitations & Technical Boundaries
+## 19. Known Limitations & Technical Boundaries
 
 - **Arbitrary Temporal Formats:** Unconventional custom timestamp formats may require manual column type declaration if DuckDB automatic string inference cannot parse them.
 - **Multi-Million Row In-Memory Charting:** For datasets exceeding 10M rows, server-side dynamic binning and histogram aggregation are recommended over client-side point rendering.
@@ -390,7 +411,7 @@ The platform provides end-to-end support for enterprise star schemas, demonstrat
 
 ---
 
-## 19. Attested Result Envelopes with Healing Lineage (Option C)
+## 20. Attested Result Envelopes with Healing Lineage (Option C)
 
 MK-Path includes full cryptographic provenance and non-repudiation for every analytical result, model artifact, and healing operation:
 

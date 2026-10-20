@@ -581,10 +581,18 @@ class DatabaseManager:
                 pass
 
             if self._client is None:
+                client_kwargs: Dict[str, Any] = {
+                    "serverSelectionTimeoutMS": 2000,
+                    "connectTimeoutMS": 2000,
+                }
+                try:
+                    import certifi
+                    client_kwargs["tlsCAFile"] = certifi.where()
+                except Exception:
+                    pass
                 self._client = AsyncMongoClient(
                     settings.MONGODB_URI,
-                    serverSelectionTimeoutMS=2000,
-                    connectTimeoutMS=2000,
+                    **client_kwargs,
                 )
             await self._client.admin.command("ping")
             self._db = self._client[settings.MONGODB_DATABASE]
