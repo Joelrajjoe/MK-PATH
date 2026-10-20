@@ -84,16 +84,6 @@ app.include_router(attestations_router.router)
 
 
 
-@app.get("/")
-async def root() -> Dict[str, Any]:
-    return {
-        "service": "MK-Path API",
-        "version": "0.1.0",
-        "phase": 3,
-        "docs": "/docs",
-    }
-
-
 @app.get("/api/health/database")
 async def health_database(response: Response) -> Dict[str, Any]:
     """MongoDB Atlas / Local Fallback health probe.
@@ -108,3 +98,59 @@ async def health_database(response: Response) -> Dict[str, Any]:
     if payload["status"] not in ("healthy", "degraded_local_fallback"):
         response.status_code = 503
     return payload
+
+
+# --- Frontend Production Distribution Mounting (Single-port Railway / PaaS deployment) ---
+import os
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+# Check for frontend build directory relative to backend or repo root
+possible_dist_paths = [
+    Path(__file__).resolve().parent.parent.parent / "frontend" / "dist",
+    Path("frontend/dist"),
+    Path("/app/frontend/dist"),
+]
+
+dist_path = None
+for p in possible_dist_paths:
+    if p.exists() and (p / "index.html").exists():
+        dist_path = p
+        break
+
+if dist_path:
+    logger.info("Mounting frontend SPA from: %s", dist_path)
+    # Mount assets subfolder
+    assets_dir = dist_path / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+    # Serve manifest, service worker, icons, and SPA fallback
+    @app.get("/manifest.json")
+    async def get_manifest():
+        return FileResponse(dist_path / "manifest.json", media_type="application/manifest+json")
+
+    @app.get("/sw.js")
+    async def get_sw():
+        return FileResponse(dist_path / "sw.js", media_type="application/javascript")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Allow API routes and docs to pass through
+        if full_path.startswith("api/") or full_path in ("docs", "openapi.json", "redoc"):
+            return Response(status_code=404)
+        target = dist_path / full_path
+        if target.exists() and target.is_file():
+            return FileResponse(target)
+        return FileResponse(dist_path / "index.html")
+else:
+    @app.get("/")
+    async def root() -> Dict[str, Any]:
+        return {
+            "service": "MK-Path API",
+            "version": "0.1.0",
+            "phase": 3,
+            "docs": "/docs",
+        }
+
